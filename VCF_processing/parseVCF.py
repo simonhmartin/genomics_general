@@ -24,7 +24,7 @@ class vcfGenoData:
         else: return "Null"
 
 
-class vcfSite:
+class VcfSite:
     
     def __init__(self, Line, head):
         headers = head.split()
@@ -172,7 +172,7 @@ class reader:
     def sites(self):
         line = self.fileObj.readline()
         while len(line) >= 1:
-            site = vcfSite(line, self.mainHead)
+            site = VcfSite(line, self.mainHead)
             yield site
             line = self.fileObj.readline()
 
