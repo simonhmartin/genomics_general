@@ -298,7 +298,7 @@ if __name__ == "__main__":
 
     ##########################################################################################################################
 
-    Out.write(" ".join(["scaffold", "position"] + samples) + "\n")
+    Out.write(" ".join(["#CHROM", "POS"] + samples) + "\n")
 
     vcfSites = vcf.sites()
 
