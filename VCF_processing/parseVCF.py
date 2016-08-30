@@ -136,9 +136,13 @@ class headData:
         self.contigLengths = {}
         for Line in headerLines:
             if Line[:8] == "##contig":
-                elements = re.split('=|,|>', Line)
-                self.contigs.append(elements[2])
-                self.contigLengths[elements[2]] = int(elements[4])
+                try:
+                    elements = re.split('=|,|>', Line)
+                    self.contigs.append(elements[2])
+                    try: self.contigLengths[elements[2]] = int(elements[4])
+                    except: self.contigLengths[elements[2]] = None
+                except:
+                    pass
             
             if Line[:6] == "#CHROM":
                 self.sampleNames = Line.split()[9:]
