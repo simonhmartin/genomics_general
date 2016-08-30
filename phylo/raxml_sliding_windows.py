@@ -137,7 +137,7 @@ parser.add_argument("-p", "--prefix", help="Prefix for output files", required =
 parser.add_argument("--exclude", help="File of scaffolds to exclude", required = False)
 parser.add_argument("--include", help="File of scaffolds to analyse", required = False)
 
-parser.add_argument("-f", "--genoFormat", help="Format of genotypes in genotypes file", action='store', choices = ("phased","pairs","diplo"), required = True)
+parser.add_argument("-f", "--genoFormat", help="Format of genotypes in genotypes file", action='store', choices = ("phased","haplo","diplo"), required = True)
 
 parser.add_argument("--individuals", help="Individuals to include, separated by comma", action = "store", metavar="ind1,ind2,ind3...")
 

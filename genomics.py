@@ -100,8 +100,8 @@ def countStops(cds, includeTerminal=False):
 #convert one ambiguous sequence into two haploid pseudoPhased sequences
 
 def pseudoPhase(sequence, genoFormat = "diplo"):
-    if genoFormat == "diplo": pairs = [haplo(s) for s in sequence]
-    else: pairs = sequence
+    if genoFormat == "pairs": pairs = sequence
+    else:  pairs = [haplo(s) for s in sequence]
     return [[p[0] for p in pairs], [p[1] for p in pairs]]
 
 
@@ -115,7 +115,7 @@ def parsePhase(genotypes):
 
 #Force diploid sequence to be haploid
 
-def forceHomo(sequence, genoFormat = "diplo"):
+def forceHomo(sequence):
     return [homo(s) for s in sequence]
 
 
