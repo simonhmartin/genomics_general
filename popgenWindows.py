@@ -103,7 +103,7 @@ parser.add_argument("-g", "--genoFile", help="Input genotypes file", required = 
 parser.add_argument("-o", "--outFile", help="Results file", required = True)
 parser.add_argument("--exclude", help="File of scaffolds to exclude", required = False)
 parser.add_argument("--include", help="File of scaffolds to analyse", required = False)
-parser.add_argument("-f", "--genoFormat", help="Format of genotypes in genotypes file", action='store', choices = ("phased","pairs","diplo"), required = True)
+parser.add_argument("-f", "--genoFormat", help="Format of genotypes in genotypes file", action='store', choices = ("phased","pairs","haplo","diplo"), required = True)
 
 parser.add_argument("-T", "--Threads", help="Number of worker threads for parallel processing", type=int, default=1, required = False, metavar="threads")
 parser.add_argument("--verbose", help="Verbose output", action="store_true")
