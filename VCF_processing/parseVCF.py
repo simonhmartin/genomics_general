@@ -181,6 +181,12 @@ class reader:
             line = self.fileObj.readline()
 
 
+def canFloat(string):
+    try: float(string)
+    except: return False
+    return True
+
+
 if __name__ == "__main__":
 
     #########################################################################################################################
@@ -307,7 +313,7 @@ if __name__ == "__main__":
         #print >> sys.stderr, vcfSite.CHROM, vcfSite.POS, vcfSite.REF, vcfSite.ALT, vcfSite.getType()
         if skipIndels and vcfSite.getType() is "indel": continue
         if skipMono and vcfSite.getType() is "mono": continue
-        if minQual and vcfSite.getType() is not "mono" and float(vcfSite.QUAL) < minQual: continue
+        if minQual and canFloat(vcfSite.QUAL) and float(vcfSite.QUAL) < minQual: continue
         genotypes = vcfSite.getGenotypes(gtFilters,asList=True,samples=samples)
         #print >> sys.stderr, genotypes
         Out.write(outSep.join([vcfSite.CHROM, str(vcfSite.POS)] + genotypes) + "\n")
