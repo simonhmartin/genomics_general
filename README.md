@@ -20,7 +20,7 @@ The script `parseVCF.py` in the `VCF_processing` directory, will convert vcf to 
 ####Example command:
 
 ```bash
-python parseVCF.py -i input.vcf.gz --skipIndel --minQual 30 --gtf flag=DP min=5 > output.vcf.gz
+python parseVCF.py -i input.vcf.gz --skipIndel --minQual 30 --gtf flag=DP min=5 > output.geno.gz
 ```
 ___
 
@@ -85,7 +85,7 @@ Four populations, with the names `P1`, `P2`, `P3` and `O` are requied.
 ___
 ##Make trees for sliding windows
 
-Two scripts in the `phylo/` directory will make trees in sliding windows: `phymlWindows.py` and `raxmlWindows.py`. As the names suggest they use `Phyml` and `RAxML`, respectively.
+Two scripts in the `phylo/` directory will make trees in sliding windows: `phymlWindows.py` and `raxmlWindows.py`. As the names suggest they use [Phyml](http://www.atgc-montpellier.fr/phyml/) and [RAxML](http://sco.h-its.org/exelixis/web/software/raxml/), respectively.
 
 ####Example command
 ```bash
@@ -94,6 +94,8 @@ python phyml_sliding_windows.py -T 10 -g input.phased.geno.gz --prefix output.ph
 `python phymlWindows.py -h` Will print a full list of command arguments.
 
 ####Notes
+Obvuously, you need to have Phyml (or RAxML) installed on your machine. You can direct the script to the location of the executable. I recommend using an unthreaded version, since each window tree will run very quickly.
+
 The window can be defined based on genomic coordinates (`--windType coord`) or the number of sites (`--windType sites`). Windows will not cross contig/scaffold boundaries.
 
 Input formats can be either `phased` or `haplo`, as shown above. For the raxml script, you could also use `diplo` format, although I'm not sure whether the ambiguity codes will be used at all by RAxML. It is certainly better to use phased sequences if you can.
