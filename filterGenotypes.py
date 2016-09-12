@@ -104,7 +104,7 @@ def lineReader(fileObj):
 ### parse arguments
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-i", "--infile", help="Input vcf file", action = "store", required = True)
+parser.add_argument("-i", "--infile", help="Input vcf file", action = "store", required = False)
 parser.add_argument("-o", "--outfile", help="Output csv file", action = "store")
 parser.add_argument("-t", "--threads", help="Analysis threads", type=int, action = "store", default = 1)
 parser.add_argument("--verbose", help="Verbose output.", action = "store_true")
@@ -194,6 +194,7 @@ else:
     HWE_P = HWE_side = None
 
 popDict = {}
+minPopCalls = None
 if args.pop:
     for pop in args.pop:
         popDict[pop[0]] = pop[1].split(",")
