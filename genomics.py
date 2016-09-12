@@ -438,7 +438,10 @@ def genoToAlignment(seqs, sampleData, genoFormat = "diplo"):
             pseudoPhasedSeqs.append(forceHomo(seqs[indName]))
             seqNames.append(indName)
             groups.append(sampleData.getPop(indName))
-    return Alignment(sequences=pseudoPhasedSeqs, names = seqNames, groups=groups)
+    order = [seqNames.index(s) for s in sorted(seqNames)]
+    return Alignment(sequences=[pseudoPhasedSeqs[i] for i in order],
+                     names =   [seqNames[i] for i in order],
+                     groups=   [groups[i] for i in order])
 
 
 
