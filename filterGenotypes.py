@@ -182,7 +182,6 @@ minCalls = args.minCalls
 minAlleles = args.minAlleles
 maxAlleles = args.maxAlleles
 minVarCount = args.minVarCount
-minPopCalls = args.minPopCalls
 maxHet = args.maxHet
 minFreq = args.minFreq
 maxFreq = args.maxFreq
@@ -198,6 +197,8 @@ popDict = {}
 if args.pop:
     for pop in args.pop:
         popDict[pop[0]] = pop[1].split(",")
+
+    if args.minPopCalls: minPopCalls = dict(zip([pop[0] for pop in args.pop], args.minPopCalls.split(",")))
 
 nProcs = args.threads
 verbose = args.verbose
