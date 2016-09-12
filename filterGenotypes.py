@@ -136,7 +136,7 @@ parser.add_argument("--maxFreq", help="Maximum variant frequency", type=float, a
 parser.add_argument("--HWE", help="Hardy-Weinberg equalibrium test P-value and side", action = "store", nargs = 2, metavar = ("P-value", "'top'/'bottom'/'both'"))
 
 #population-specific filtering arguments
-parser.add_argument("--minPopCalls", help="Minimum number of good genotype calls per pop", type=int, action = "store", metavar = "integer")
+parser.add_argument("--minPopCalls", help="Minimum number of good genotype calls per pop (comma separated)", action = "store", metavar = "integer")
 parser.add_argument("--fixedDiffs", help="Only variants where differences are fixed between pops", action = "store_true")
 
 
@@ -198,7 +198,8 @@ if args.pop:
     for pop in args.pop:
         popDict[pop[0]] = pop[1].split(",")
 
-    if args.minPopCalls: minPopCalls = dict(zip([pop[0] for pop in args.pop], args.minPopCalls.split(",")))
+    if args.minPopCalls: minPopCalls = dict(zip([pop[0] for pop in args.pop],
+                                                [int(i) for i in args.minPopCalls.split(",")]))
 
 nProcs = args.threads
 verbose = args.verbose
