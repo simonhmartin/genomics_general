@@ -20,7 +20,7 @@ The script `parseVCF.py` in the `VCF_processing` directory, will convert vcf to 
 ####Example command:
 
 ```bash
-python parseVCF.py -i input.vcf.gz --skipIndel --minQual 30 --gtf flag=DP min=5 > output.geno.gz
+python parseVCF.py -i input.vcf.gz --skipIndel --minQual 30 --gtf flag=DP min=5 | gzip > output.geno.gz
 ```
 ___
 
