@@ -419,7 +419,7 @@ class Alignment:
     def siteFreqs(self, sites=None):
         if sites is None: sites = range(self.l)
         if type(sites) is not list: sites = list(sites)
-        return [binFreqs(self.numArray[:,x][self.nanMask[:,x]].astype(int)) for x in sites]
+        return np.array([binFreqs(self.numArray[:,x][self.nanMask[:,x]].astype(int)) for x in sites])
 
 
 
@@ -602,54 +602,20 @@ def ABBABABA(Aln, P1, P2, P3, P4, minData):
     return output
 
 
-#def sitePopFreqs(aln, minData):
-    ##get population indices
-    #pops,indices = np.unique(aln.groups, return_inverse = True)
-    ##subset by population
-    #popAlns = [aln.subset(groups=pop) for pop in pops]
-    ##check which sites have enough data in each pop
-    #propMissing = [a.siteNonNan fora in popAlns] 
-    
-    
-    ##get derived frequencies for all biallelic siites
-    #for i in P123Aln.biSites():
-        ##if theres a minimum proportion of sites, check all pops
-        #if minData and np.any([A.siteNonNan(i, prop=True) for A in (P1Aln, P2Aln, P3Aln, P4Aln)] < minData): continue
-        #allFreqs = Aln.siteFreqs(i)[0] #an array with 4 values, the freq for A,C,G and T
-        ## get frequencies for wach pop
-        #P1Freqs,P2Freqs,P3Freqs,P4Freqs = [A.siteFreqs(i)[0] for A in (P1Aln, P2Aln, P3Aln, P4Aln)]
-        ##check for bad data
-        #if np.any(np.isnan(P1Freqs)) or np.any(np.isnan(P2Freqs)) or np.any(np.isnan(P3Freqs)) or np.any(np.isnan(P4Freqs)): continue
-        ##if the outgroup is fixed, then that is the ancestral state - otherwise the derived state is the most common allele overall
-        #if np.max(P4Freqs) == 1.:
-            #anc = np.where(P4Freqs == 1)[0][0] #ancetral allele is which is fixed (get the index)
-            #der = [i for i in np.where(allFreqs > 0)[0] if i != anc][0] # derived is the index that is > 0 but not anc
-        #else:der = np.argsort(allFreqs)[-2] # the less common base overall
-        ##derived allele frequencies
-        #P1derFreq = P1Freqs[der]
-        #P2derFreq = P2Freqs[der]
-        #P3derFreq = P3Freqs[der]
-        #P4derFreq = P4Freqs[der]
-        #PDderFreq = max(P2derFreq,P3derFreq)
-        ## get weigtings for ABBAs and BABAs
-        #ABBAsum += (1 - P1derFreq) * P2derFreq * P3derFreq * (1 - P4derFreq)
-        #BABAsum += P1derFreq * (1 - P2derFreq) * P3derFreq * (1 - P4derFreq)
-        #maxABBAsum += (1 - P1derFreq) * PDderFreq * PDderFreq * (1 - P4derFreq)
-        #maxBABAsum += P1derFreq * (1 - PDderFreq) * PDderFreq * (1 - P4derFreq)
-        #sitesUsed += 1
-    ##calculate D, fd
-    #output = {}
-    #try: output["D"] = (ABBAsum - BABAsum) / (ABBAsum + BABAsum)
-    #except: output["D"] = np.NaN
-    #try:
-        #if output["D"] >= 0: output["fd"] = (ABBAsum - BABAsum) / (maxABBAsum - maxBABAsum)
-        #else: output["fd"] = np.NaN
-    #except: output["fd"] = np.NaN
-    #output["ABBA"] = ABBAsum
-    #output["BABA"] = BABAsum
-    #output["sitesUsed"] = sitesUsed
-    
-    #return output
+def popSiteFreqs(aln, minData = 0):
+    #get population indices
+    pops,indices = np.unique(aln.groups, return_inverse = True)
+    #subset by population
+    popAlns = [aln.subset(groups=pop) for pop in pops]
+    #site freqs fro each pop
+    _popSiteFreqs = [a.siteFreqs() for a in popAlns]
+    #if masking for mising data
+    if minData > 0:
+        #proportion of inds with non-missing data
+        popPropData = [a.siteNonNan for a in popAlns] 
+        popDataMask = [propData > minData for propData in popPropData]
+        for x in range(len(pops)): _popSiteFreqs[x][~popDataMask[x],:] = np.array([np.nan]*4)
+    return _popSiteFreqs
 
 ################################################################################################
 
