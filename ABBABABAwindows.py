@@ -104,10 +104,13 @@ parser.add_argument("--windType", help="Type of windows to make", action = "stor
 parser.add_argument("-w", "--windSize", help="Window size in bases", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-s", "--stepSize", help="Step size for sliding window", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-m", "--minSites", help="Minumum good sites per window", type=int, action = "store", required = False, metavar="sites", default = 1)
+parser.add_argument("-O", "--overlap", help="Overlap for sites sliding window", type=int, action = "store", required = False, metavar="sites")
+parser.add_argument("-D", "--maxDist", help="Maximum span distance for sites window", type=int, action = "store", required = False)
+parser.add_argument("--windCoords", help="Window coordinates file (scaffold start end)", required = False)
 parser.add_argument("--minData", help="Min proportion of samples genotped per site", type=float, action="store", required = False, default = 0.01, metavar = "proportion")
+
 parser.add_argument("-p", "--population", help="Pop name and ind names (separated by commas)", action='append', nargs=2, required = True, metavar=("name","inds"))
 parser.add_argument("--haploid", help="Samples that are haploid (comma separated)", action = "store", metavar = "sample names")
-parser.add_argument("--windCoords", help="Window coordinates file (scaffold start end)", required = False)
 
 parser.add_argument("-g", "--genoFile", help="Input genotypes file", required = True)
 parser.add_argument("-o", "--outFile", help="Results file", required = True)
