@@ -101,7 +101,7 @@ def countStops(cds, includeTerminal=False):
 
 def pseudoPhase(sequence, genoFormat = "diplo"):
     if genoFormat == "pairs": return [[g[0] for g in sequence], [g[1] for g in sequence]]
-    elif genoFormat = "phased": return [[g[0] for g in sequence], [g[2] for g in sequence]]
+    elif genoFormat == "phased": return [[g[0] for g in sequence], [g[2] for g in sequence]]
     else:
         pairs = [haplo(g) for g in sequence]
         return [[p[0] for p in pairs], [p[1] for p in pairs]]
