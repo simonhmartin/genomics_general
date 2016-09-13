@@ -18,10 +18,12 @@ from time import sleep
 
 '''A function that reads from the window queue, calls some other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using. This is the function that will run on each of the N cores.'''
-def stats_wrapper(windowQueue, resultQueue, genoFormat, sampleData, minSites, stats):
+def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, minSites, stats):
   while True:
     windowNumber,window = windowQueue.get() # retrieve window
-    sites = window.seqLen()
+    if windType == "coordinate" or windType == "predefined":
+        scaf,start,end,mid,sites = (window.scaffold, window.start, window.end, window.midPos(),window.seqLen())
+    else: scaf,start,end,mid,sites = (window.scaffold, window.firstPos(), window.lastPos(),window.midPos(),window.seqLen())
     if sites >= minSites:
         isGood = True
         #make alignment object
@@ -31,7 +33,7 @@ def stats_wrapper(windowQueue, resultQueue, genoFormat, sampleData, minSites, st
     else:
         isGood = False
         values = [np.NaN]*len(stats)
-    resultString = ",".join([str(x) for x in [window.scaffold,window.start,window.end,sites] + values])
+    resultString = ",".join([str(x) for x in [scaf,start,end,mid,sites] + values])
     resultQueue.put((windowNumber, resultString, isGood))
 
 
@@ -93,6 +95,7 @@ def checkStats():
 
 parser = argparse.ArgumentParser()
 
+parser.add_argument("--windType", help="Type of windows to make", action = "store", choices = ("sites","coordinate","predefined"), default = "coordinate")
 parser.add_argument("-w", "--windSize", help="Window size in bases", type=int, action = "store", required = True, metavar="sites")
 parser.add_argument("-s", "--stepSize", help="Step size for sliding window", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-m", "--minSites", help="Minumum good sites per window", type=int, action = "store", required = False, metavar="sites", default = 1)
@@ -111,14 +114,36 @@ parser.add_argument("--verbose", help="Verbose output", action="store_true")
 
 args = parser.parse_args()
 
-windSize = args.windSize
-stepSize = args.stepSize
-if not stepSize:stepSize = windSize
+#window parameters
+windType = args.windType
+
+if args.windType == "coordinate":
+    assert args.windSize, "Window size must be provided."
+    stepSize = args.stepSize
+    if not stepSize: stepSize = windSize
+    assert not args.overlap, "Overlap does not apply to coordinate windows. Use --stepSize instead."
+    assert not args.maxDist, "Maximum distance only applies to sites windows."
+
+elif args.windType == "sites":
+    assert args.windSize, "Window size (number of sites) must be provided."
+    overlap = args.overlap
+    if not overlap: overlap = 0
+    maxDist = args.maxDist
+    if not maxDist: maxDist = np.inf
+    assert not args.stepSize, "Step size only applies to coordinate windows. Use --overlap instead."
+else:
+    assert args.windCoords, "Please provide a file of window coordinates."
+    assert not args.overlap, "Overlap does not apply for predefined windows."
+    assert not args.maxDist, "Maximum does not apply for predefined windows."
+    assert not args.stepSize,"Step size does not apply for predefined windows."
+    assert not args.include,"You cannot only include specific scaffolds if using predefined windows."
+    assert not args.exclude,"You cannot exclude specific scaffolds if using predefined windows."
+    with open(args.windCoords,"r") as wc: windCoords = tuple([(x,int(y),int(z),) for x,y,z in [line.split()[:3] for line in wc]])
+
 minSites = args.minSites
+if not minSites: minSites = windSize
 
-pops = args.population
-
-
+#file info
 genoFileName = args.genoFile
 genoFormat = args.genoFormat
 
@@ -127,11 +152,13 @@ outFileName = args.outFile
 exclude = args.exclude
 include = args.include
 
+#other
 threads = args.Threads
 verbose = args.verbose
 
 
 ############## parse populations
+pops = args.population
 
 popNames = [p[0] for p in pops]
 popInds = [p[1].split(",") for p in pops]
@@ -156,7 +183,7 @@ else:
 
 outFile = open(outFileName, "w")
 
-outFile.write("scaffold,start,end,sites,")
+outFile.write("scaffold,start,end,mid,sites,")
 
 ############################################################################################################################################
 
@@ -212,7 +239,7 @@ writeQueue = SimpleQueue()
 of course these will only start doing anything after we put data into the line queue
 the function we call is actually a wrapper for another function.(s) This one reads from the line queue, passes to some analysis function(s), gets the results and sends to the result queue'''
 for x in range(threads):
-  worker = Process(target=stats_wrapper, args = (windowQueue, resultQueue, genoFormat, sampleData, minSites, stats,))
+  worker = Process(target=stats_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, sampleData, minSites, stats,))
   worker.daemon = True
   worker.start()
   print >> sys.stderr, "started worker", x
@@ -241,8 +268,16 @@ worker.start()
 ##########################################################
 
 #get windows and analyse
+if windType == "coordinate": windowGenerator = genomics.slidingCoordWindows(genoFile, windSize, stepSize,
+                                                                            sampleData.indNames,
+                                                                            include = scafsToInclude,
+                                                                            exclude = scafsToExclude)
+elif windType == "sites": windowGenerator = genomics.slidingSitesWindows(genoFile, windSize, overlap,
+                                                                         maxDist, minSites, sampleData.indNames,
+                                                                         include = scafsToInclude,
+                                                                         exclude = scafsToExclude)
+else: windowGenerator = genomics.predefinedCoordWindows(genoFile, windCoords, sampleData.indNames)
 
-windowGenerator = genomics.slidingCoordWindows(genoFile, windSize, stepSize, sampleData.indNames, include = scafsToInclude, exclude = scafsToExclude)
 
 for window in windowGenerator:
     windowQueue.put((windowsQueued,window))
