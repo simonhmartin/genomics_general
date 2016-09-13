@@ -223,25 +223,25 @@ if __name__ == "__main__":
 
     if samples: samples = samples.split(",")
 
-    include = args.include
-    exclude = args.exclude
+    include = []
+    exclude = []
 
-    if include: include += include.split(",")
-    if exclude: exclude += exclude.split(",")
+    if args.include: include += args.include.split(",")
+    if args.exclude: exclude += args.exclude.split(",")
 
     if args.includeFile:
         with open(args.includeFile, 'r') as includeFile:
-            include = [c.strip() for c in includeFile.read().split("\n")]
+            include += [c.strip() for c in includeFile.read().split("\n")]
 
     if args.excludeFile:
         with open(args.excludeFile, 'r') as excludeFile:
-            exclude = [c.strip() for c in excludeFile.read().split("\n")]
+            exclude += [c.strip() for c in excludeFile.read().split("\n")]
 
-    if include:
+    if len(include) >= 1:
         include = set(include)
         print >> sys.stderr, len(include), "contigs will be included."
         
-    if exclude:
+    if len(exclude) >= 1:
         exclude = set(exclude)
         print >> sys.stderr, len(exclude), "contigs will be excluded."
 
