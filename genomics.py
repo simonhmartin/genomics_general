@@ -5,6 +5,7 @@ import math
 from copy import deepcopy
 from string import maketrans
 import time
+import itertools
 
 
 ##################################################################################################################
@@ -24,6 +25,7 @@ def diplo(pair): return haploDiploDict[pair]
 
 def homo(diplo): return diploHomoDict[diplo]
 
+numSeqDict = {"A":0,"C":1,"G":2,"T":3,"N":np.NaN}
 
 class Genotype:
     def __init__(self, geno, haploid = False):
@@ -165,7 +167,7 @@ class GenomeSite:
         elif mode == "alleles":
             return [self.genotypes[sample].alleles for sample in samples]
         else:
-            raise ValueError("mode myst be 'bases', 'phased', 'diplo' or 'alleles'")
+            raise ValueError("mode must be 'bases', 'phased', 'diplo' or 'alleles'")
     
     def alleles(self, samples = None, pop=None):
         if pop: samples = self.pops[pop]
@@ -342,10 +344,26 @@ def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAllel
 
 #modules for working with and analysing alignments
 
-numSeqDict = {"A":0,"C":1,"G":2,"T":3,"N":np.NaN}
+def invertDictOfLists(d):
+    new = {}
+    for key, lst in d.iteritems():
+        for i in lst:
+            try: new[i].append(key)
+            except: new[i] = [key]
+    new
+    return new
+
+
+def makeList(thing):
+    if isinstance(thing, basestring): return [thing]
+    else:
+        try: iter(thing)
+        except TypeError: return [thing]
+        else: return list(thing)
+
 
 class Alignment:
-    def __init__(self, sequences = None, names=None, groups = None, length = None, numArray = None):
+    def __init__(self, sequences = None, names=None, groups = None, groupIndDict=None, length = None, numArray = None):
         assert sequences is not None or length is not None, "Specify either sequences or length of empty sequence object."
         if sequences is not None:
             assert isinstance(sequences, (list,tuple,np.ndarray)), "Sequences must be a list, tuple or numpy array."
@@ -365,37 +383,35 @@ class Alignment:
         
         self.N,self.l = self.array.shape
         
-        if not names: names = range(self.N)
+        if names is None: names = np.arange(self.N)
         else: assert len(names) == self.N, "Incorrect number of names."
-        self.names = names
+        self.names = np.array(names)
         
-        if not groups: groups = [None]*self.N #groups is just a list of names, giving the group name for each sample
-        else: assert len(groups) == self.N, "Incorrect number of groups."
-        self.groups = groups
-                
-    def addSeq(self, sequence, name = None, group = None):
-        self.array = np.vstack((self.array, np.array(list(sequence))))
-        self.numArray = np.vstack((self.numArray, np.array([numSeqDict[b] for b in sequence])))
-        self.N += 1
-        if not name: name = self.N
-        self.names.append(name)
-        self.groups.append(group)
-        self.nanMask = ~np.isnan(self.numArray)
+        if groups is not None:
+            assert len(groups) == self.N, "Incorrect number of groups."
+            self.groups = np.array(groups)
+            self.indGroupDict = dict(zip(self.names, [makeList(g) for g in self.groups]))
+            self.groupIndDict = invertDictOfLists(self.indGroupDict)
+        elif groupIndDict is not None:
+            self.groupIndDict = groupIndDict
+            self.indGroupDict = invertDictOfLists(self.groupIndDict)
+            for name in self.names:
+                if name not in self.indGroupDict: self.indGroupDic[name] = []
+            self.groups = np.array([self.indGroupDict[n] for n in self.names])
+        else:
+            self.groups = np.array([None]*self.N) #groups is just a list of names, giving the group name for each sample
+            self.indGroupDict = dict(zip(self.names, [makeList(g) for g in self.groups]))
+            self.groupIndDict = {}
     
-    def subset(self, indices = [], names = [], groups = []):
-        indices = [i for i in xrange(self.N) if i in indices or
-                   (self.names[i] and self.names[i] in names) or
-                   (self.groups[i] and self.groups[i] in groups)]
-        
-        new = Alignment(sequences = self.array[indices], numArray=self.numArray[indices],
-                        names=[self.names[i] for i in indices], groups=[self.groups[i] for i in indices])
-        return new
-    
-    def subsetBySites(self,indices):
-        new = Alignment(sequences = self.array[indices], numArray=self.numArray[indices],
-                names=[self.names[i] for i in indices], groups=[self.groups[i] for i in indices])
-        return new
-
+    def subset(self, indices = None, names = None, groups = None):
+        if indices is None: indices = []
+        if names is None: names = []
+        if groups is None: groups = []
+        names = names + [j for i in [self.groupIndDict[g] for g in groups] for j in i]
+        indices += [np.where(self.names == n)[0][0] for n in names]
+        indices = np.unique(indices)
+        return Alignment(sequences = self.array[indices], numArray=self.numArray[indices],
+                        names=self.names[indices], groups=self.groups[indices])
     
     def column(self,x): return self.array[:,x]
     
@@ -413,17 +429,15 @@ class Alignment:
     def biSites(self): return np.where([len(np.unique(self.numArray[:,x][self.nanMask[:,x]])) == 2 for x in xrange(self.l)])[0]
     
     def siteNonNan(self, sites=None, prop = False):
-        if not sites: sites = xrange(self.l)
-        if type(sites) is not list: sites = list(sites)
+        if sites is None: sites = range(self.l)
+        else: sites = makeList(sites)
         if prop: return np.array([1.*sum(self.nanMask[:,x])/self.N for x in sites])
         return np.array([sum(self.nanMask[:,x]) for x in sites])
     
     def siteFreqs(self, sites=None):
         if sites is None: sites = range(self.l)
-        if type(sites) is not list: sites = list(sites)
-        return np.array([binFreqs(self.numArray[:,x][self.nanMask[:,x]].astype(int)) for x in sites])
-
-
+        else: sites = makeList(sites)
+        return np.array([binBaseFreqs(self.numArray[:,x][self.nanMask[:,x]].astype(int)) for x in sites])
 
 
 def genoToAlignment(seqs, sampleData, genoFormat = "diplo"):
@@ -447,10 +461,29 @@ def genoToAlignment(seqs, sampleData, genoFormat = "diplo"):
 
 
 
-def binFreqs(numArr):
+def binBaseFreqs(numArr, asCounts = False):
     n = len(numArr)
     if n == 0: return np.array([np.NaN]*4)
-    else: return 1.* np.bincount(numArr, minlength=4) / n
+    else:
+        if asCounts: return np.bincount(numArr, minlength=4)
+        else: return 1.* np.bincount(numArr, minlength=4) / n
+
+
+def derivedAllele(inBases, outBases):
+    outAlleles = np.unique(outBases)
+    inAlleles = np.unique(inBases)
+    if len(outAlleles) == 1 and len(inAlleles) == 2 and np.any(outAlleles[0] == inAlleles):
+        return inAlleles[inAlleles != outAlleles[0]][0]
+    else: return np.nan
+
+
+def minorAllele(bases):
+    alleles = np.unique(bases)
+    if len(alleles) == 2:
+        alleles, counts = np.unique(bases, return_counts = True)
+        return np.random.choice(alleles[counts==min(counts)])
+    else: return np.nan
+
 
 
 #an older version of sequence distance - using text as opposed to my newer method using numerical arrays
@@ -788,7 +821,7 @@ class SitesWindow:
 
 #sites window class - has a fixed number of sites
 class SimpleWindow: 
-    def __init__(self, seqs = None, names = None):
+    def __init__(self, seqs = None, names = None, ID=None):
         if not names and not seqs:
             names = []
             seqs = []
@@ -801,6 +834,7 @@ class SimpleWindow:
         self.names = names
         self.seqs = seqs
         self.n = len(self.names)
+        self.ID = ID
     
     #method for adding
     def addBlock(self, seqs):
@@ -1056,6 +1090,59 @@ def predefinedCoordWindows(genoFile, windCoords, names = None, splitPhased=False
         if skipDeepcopy: yield window
         else: yield deepcopy(window)
         
+        if len(line) <= 1: break
+
+
+#function to read blocks of n lines
+#sliding window generator function
+def nonOverlappingSitesWindows(genoFile, blockSize, names = None, splitPhased=False, include = None, exclude = None):
+    #get file headers
+    headers = genoFile.readline().split()
+    allNames = headers[2:]
+    if not names: names = allNames
+    if splitPhased:
+        #if splitting phased, we need to split names too
+        allNames=[name+"_"+x for name in allNames for x in ["A","B"]]
+        names=[name+"_"+x for name in names for x in ["A","B"]]
+    columns = dict(zip(names, [allNames.index(name) for name in names])) # records site column for each name
+    #blocks counter
+    windowsDone = 0
+    #initialise an empty block
+    window = None
+    #read first line
+    line = genoFile.readline()
+    site = parseGenoLine(line, splitPhased)
+    while True:
+        #initialise window
+        #if its a scaffold we want to analyse, start new window
+        if (not include and not exclude) or (include and site.scaffold in include) or (exclude and site.scaffold not in exclude):
+            window = SitesWindow(scaffold = site.scaffold, names = names, ID = windowsDone + 1)
+            
+        #if its a scaf we don't want, were going to read lines until we're on one we do want
+        else:
+            window = None
+            badScaf = site.scaffold
+            while site.scaffold == badScaf or (include and site.scaffold not in include and site.scaffold is not None) or (exclude and site.scaffold in exclude and site.scaffold is not None):
+            
+                line = genoFile.readline()
+                site = parseGenoLine(line,splitPhased)
+
+        #build window
+        while window and site.scaffold == window.scaffold and window.seqLen() < blockSize:
+            #add this site to the window
+            window.addSite(GTs=[site.GTs[columns[name]] for name in names], position=site.position)
+            #read next line
+            line = genoFile.readline()
+            site = parseGenoLine(line,splitPhased)
+        
+        '''if we get here, either the window is full, or the line in hand is incompatible with the currrent window
+            If the window has more than minSites, yield it'''
+        
+        if window:
+            windowsDone += 1
+            yield window
+                
+        #if we've reached the end of the file, break
         if len(line) <= 1: break
 
 
