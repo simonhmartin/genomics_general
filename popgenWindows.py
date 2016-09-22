@@ -133,6 +133,7 @@ if args.windType == "coordinate":
 
 elif args.windType == "sites":
     assert args.windSize, "Window size (number of sites) must be provided."
+    windSize = args.windSize
     overlap = args.overlap
     if not overlap: overlap = 0
     maxDist = args.maxDist
