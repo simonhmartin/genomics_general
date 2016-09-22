@@ -103,7 +103,9 @@ parser.add_argument("-O", "--overlap", help="Overlap for sites sliding window", 
 parser.add_argument("-D", "--maxDist", help="Maximum span distance for sites window", type=int, action = "store", required = False)
 parser.add_argument("--windCoords", help="Window coordinates file (scaffold start end)", required = False)
 
-parser.add_argument("-p", "--population", help="Pop name and ind names (separated by commas)", action='append', nargs=2, required = True, metavar=("name","inds"))
+parser.add_argument("-p", "--population", help="Pop name and optionally sample names (separated by commas)",
+                    required = True, action='append', nargs="+", metavar=("popName","[samples]"))
+parser.add_argument("--popsFile", help="Optional file of sample names and populations", action = "store", required = False)
 parser.add_argument("--haploid", help="Samples that are haploid (comma separated)", action = "store", metavar = "sample names")
 
 parser.add_argument("-g", "--genoFile", help="Input genotypes file", required = True)
@@ -123,6 +125,7 @@ windType = args.windType
 
 if args.windType == "coordinate":
     assert args.windSize, "Window size must be provided."
+    windSize = args.windSize
     stepSize = args.stepSize
     if not stepSize: stepSize = windSize
     assert not args.overlap, "Overlap does not apply to coordinate windows. Use --stepSize instead."
@@ -162,10 +165,21 @@ verbose = args.verbose
 
 
 ############## parse populations
-pops = args.population
+popNames = []
+popInds = []
+for p in args.population:
+    popNames.append(p[0])
+    if len(p) > 1: popInds.append(p[1].split(","))
+    else: popInds.append([])
 
-popNames = [p[0] for p in pops]
-popInds = [p[1].split(",") for p in pops]
+if args.popsFile:
+    print "reading groups file"####################################
+    with open(args.popsFile, "r") as pf: popDict = dict([ln.split() for ln in pf])
+    for ind in popDict.keys():
+        try: popInds[popNames.index(popDict[ind])].append(ind)
+        except: pass
+
+for p in popInds: assert len(p) >= 1, "All populations must be represented by at least one sample."
 
 allInds = list(set([i for p in popInds for i in p]))
 

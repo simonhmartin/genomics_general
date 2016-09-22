@@ -743,57 +743,118 @@ class CoordWindow:
             return np.NaN
 
 
-#sites window class - has a fixed number of sites
+##sites window class - has a fixed number of sites (old version without numpy)
+#class SitesWindow: 
+    #def __init__(self, scaffold = None, seqs = None, names = None, positions = None, ID = None):
+        #if not names and not seqs:
+            #names = []
+            #seqs = []
+        #elif not names:
+            #names = [None]*len(seqs)
+        #elif not seqs:
+            #seqs = [[] for name in names]
+        #assert len(names) == len(seqs)
+        #if not positions:
+            #positions = []
+        #if len(seqs) > 0:
+            #assert len(seqs[0]) == len(positions) # ensure correct number of positions is given
+            #assert len(set([len(seq) for seq in seqs])) == 1 #ensure sequences are equal length
+            #for seq in seqs:
+                #assert type(seq) is list # added sequences must each be a list
+        #self.scaffold = scaffold
+        #self.names = names
+        #self.positions = positions
+        #self.seqs = seqs
+        #self.n = len(self.names)
+        #self.ID = ID
+    
+    ##method for adding
+    #def addBlock(self, seqs, positions):
+        #assert len(seqs) == self.n # ensure correct number seqs is added
+        #if len(seqs) > 0:
+            #assert len(seqs[0]) == len(positions) # ensure correct number of positions is given
+            #assert len(set([len(seq) for seq in seqs])) == 1 #ensure sequences are equal length
+            #for seq in seqs:
+                #assert type(seq) is list # added sequences must each be a list
+        #for x in range(len(seqs)):
+            #self.seqs[x] += seqs[x]
+        #self.positions += positions
+    
+    #def addSite(self, GTs, position):
+        #assert len(GTs) == self.n # ensure correct number seqs is added
+        #for x in range(self.n):
+            #self.seqs[x].append(GTs[x])
+        #self.positions.append(position)
+    
+    #def seqLen(self):
+        #return len(self.positions)
+    
+    #def firstPos(self):
+        #return min(self.positions)
+    
+    #def lastPos(self):
+        #return max(self.positions)
+    
+    #def trim(self,right=False,remove=None,leave=None):
+        #assert remove != None or leave != None
+        #if not remove: remove=self.seqLen() - leave
+        #if not right:
+            ##trim positions
+            #self.positions = self.positions[remove:]
+            ##slide seqs
+            #self.seqs = [seq[remove:] for seq in self.seqs]
+        #else:
+            #self.positions = self.positions[:-remove]
+            ##slide seqs
+            #self.seqs = [seq[:-remove] for seq in self.seqs]
+    
+    #def seqDict(self):
+        #return dict(zip(self.names,self.seqs))
+    
+    #def midPos(self):
+        #try:
+            #return int(round(sum(self.positions)/len(self.positions)))
+        #except:
+            #pass
+
+
+#sites window class - has a fixed number of sites - now using a numpy array
 class SitesWindow: 
     def __init__(self, scaffold = None, seqs = None, names = None, positions = None, ID = None):
-        if not names and not seqs:
-            names = []
-            seqs = []
-        elif not names:
-            names = [None]*len(seqs)
-        elif not seqs:
-            seqs = [[] for name in names]
-        assert len(names) == len(seqs)
-        if not positions:
-            positions = []
-        if len(seqs) > 0:
-            assert len(seqs[0]) == len(positions) # ensure correct number of positions is given
-            assert len(set([len(seq) for seq in seqs])) == 1 #ensure sequences are equal length
-            for seq in seqs:
-                assert type(seq) is list # added sequences must each be a list
-        self.scaffold = scaffold
+        if not names: names = [None]*len(seqs)
         self.names = names
-        self.positions = positions
-        self.seqs = seqs
         self.n = len(self.names)
+        if not seqs: seqs = np.empty(shape=(self.n,0), dtype=str)
+        else:
+            seqs = np.array(seqs)
+            assert len(names) == seqs.shape[0]
+        self.seqs = seqs
+        if not positions: positions = []
+        self.positions = positions
+        if self.n > 0:
+            assert seqs.shape[1] == len(positions) # ensure correct number of positions is given
+        self.scaffold = scaffold
         self.ID = ID
     
     #method for adding
     def addBlock(self, seqs, positions):
-        assert len(seqs) == self.n # ensure correct number seqs is added
-        if len(seqs) > 0:
-            assert len(seqs[0]) == len(positions) # ensure correct number of positions is given
-            assert len(set([len(seq) for seq in seqs])) == 1 #ensure sequences are equal length
-            for seq in seqs:
-                assert type(seq) is list # added sequences must each be a list
-        for x in range(len(seqs)):
-            self.seqs[x] += seqs[x]
+        seqs = np.array(seqs)
+        assert seqs.shape[0] == self.n, "incorrect number of sequnces addded"
+        assert seqs.shape[1] == len(positions), "Number of positions does not match sequence length"
+        self.seqs = np.hstack((self.seqs, seqs))
         self.positions += positions
     
     def addSite(self, GTs, position):
-        assert len(GTs) == self.n # ensure correct number seqs is added
-        for x in range(self.n):
-            self.seqs[x].append(GTs[x])
+        GTs = np.array(GTs)
+        GTs = GTs.reshape((GTs.shape[0],1))
+        self.seqs = np.append(self.seqs, GTs, axis = 1)
         self.positions.append(position)
     
-    def seqLen(self):
-        return len(self.positions)
+    def seqLen(self): return self.seqs.shape[1]
     
-    def firstPos(self):
-        return min(self.positions)
+    def firstPos(self): return min(self.positions)
     
-    def lastPos(self):
-        return max(self.positions)
+    def lastPos(self): return max(self.positions)
     
     def trim(self,right=False,remove=None,leave=None):
         assert remove != None or leave != None
@@ -802,21 +863,17 @@ class SitesWindow:
             #trim positions
             self.positions = self.positions[remove:]
             #slide seqs
-            self.seqs = [seq[remove:] for seq in self.seqs]
+            self.seqs = self.seqs[:,remove:]
         else:
             self.positions = self.positions[:-remove]
             #slide seqs
-            self.seqs = [seq[:-remove] for seq in self.seqs]
+            self.seqs = self.seqs[:,remove:]
     
-    def seqDict(self):
-        return dict(zip(self.names,self.seqs))
+    def seqDict(self): return dict(zip(self.names,[list(s) for s in self.seqs]))
     
     def midPos(self):
-        try:
-            return int(round(sum(self.positions)/len(self.positions)))
-        except:
-            pass
-
+        try: return int(round(sum(self.positions)/len(self.positions)))
+        except: return None
 
 
 #sites window class - has a fixed number of sites
@@ -870,13 +927,10 @@ class Site:
 
 #function to parse a clls line into the Site class
 def parseGenoLine(line, splitPhased = False):
-    site = Site()
     objects = line.split()
-    if len(objects) >= 3:
-        site.scaffold = objects[0]
-        site.position = int(objects[1])
-        site.GTs = objects[2:]
-        if splitPhased: site.GTs = [a for GT in site.GTs for a in [GT[0],GT[-1]]]
+    if len(objects) >= 3: site = Site(scaffold = objects[0], position = int(objects[1]), GTs = objects[2:])
+    else: site = Site()
+    if splitPhased: site.GTs = [a for GT in site.GTs for a in [GT[0],GT[-1]]]
     return site
 
 #sliding window generator function
@@ -1095,7 +1149,7 @@ def predefinedCoordWindows(genoFile, windCoords, names = None, splitPhased=False
 
 #function to read blocks of n lines
 #sliding window generator function
-def nonOverlappingSitesWindows(genoFile, blockSize, names = None, splitPhased=False, include = None, exclude = None):
+def nonOverlappingSitesWindows(genoFile, windSites, names = None, splitPhased=False, include = None, exclude = None):
     #get file headers
     headers = genoFile.readline().split()
     allNames = headers[2:]
@@ -1128,7 +1182,7 @@ def nonOverlappingSitesWindows(genoFile, blockSize, names = None, splitPhased=Fa
                 site = parseGenoLine(line,splitPhased)
 
         #build window
-        while window and site.scaffold == window.scaffold and window.seqLen() < blockSize:
+        while window and site.scaffold == window.scaffold and window.seqLen() < windSites:
             #add this site to the window
             window.addSite(GTs=[site.GTs[columns[name]] for name in names], position=site.position)
             #read next line

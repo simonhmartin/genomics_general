@@ -129,6 +129,7 @@ windType = args.windType
 
 if args.windType == "coordinate":
     assert args.windSize, "Window size must be provided."
+    windSize = args.windSize
     stepSize = args.stepSize
     if not stepSize: stepSize = windSize
     assert not args.overlap, "Overlap does not apply to coordinate windows. Use --stepSize instead."
