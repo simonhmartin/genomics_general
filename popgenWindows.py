@@ -67,21 +67,17 @@ def sorter(resultQueue, writeQueue, verbose):
       sortBuffer[str(resNumber)] = (result,isGood)
 
 '''a writer function that writes the sorted result. This is also generic'''
-def writer(writeQueue, out):
-  global resultsWritten
-  global resultsHandled
-  while True:
-    resNumber,result,isGood = writeQueue.get()
-    if verbose:
-      print >> sys.stderr, "Writer received result", resNumber
-      if isGood:
-        print >> sys.stderr, "Writing good result."
-      else:
-        print >> sys.stderr, "Omitting bad result."
-    if isGood:
-      out.write(result + "\n")
-      resultsWritten += 1
-    resultsHandled += 1
+def writer(writeQueue, out, writeFailedWindows=False):
+    global resultsWritten
+    global resultsHandled
+    while True:
+        resNumber,result,isGood = writeQueue.get()
+        if verbose:
+            print >> sys.stderr, "Writer received result", resNumber
+        if isGood or writeFailedWindows:
+            out.write(result + "\n")
+            resultsWritten += 1
+        resultsHandled += 1
 
 
 '''loop that checks stats'''
@@ -116,6 +112,7 @@ parser.add_argument("-f", "--genoFormat", help="Format of genotypes in genotypes
 
 parser.add_argument("-T", "--Threads", help="Number of worker threads for parallel processing", type=int, default=1, required = False, metavar="threads")
 parser.add_argument("--verbose", help="Verbose output", action="store_true")
+parser.add_argument("--writeFailedWindows", help="Write output even for windows with too few sites.", action="store_true")
 
 
 args = parser.parse_args()
@@ -270,7 +267,7 @@ worker.daemon = True
 worker.start()
 
 '''start thread for writing the results'''
-worker = Thread(target=writer, args=(writeQueue, outFile,))
+worker = Thread(target=writer, args=(writeQueue, outFile, args.writeFailedWindows,))
 worker.daemon = True
 worker.start()
 
