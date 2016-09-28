@@ -171,7 +171,6 @@ for p in args.population:
     else: popInds.append([])
 
 if args.popsFile:
-    print "reading groups file"####################################
     with open(args.popsFile, "r") as pf: popDict = dict([ln.split() for ln in pf])
     for ind in popDict.keys():
         try: popInds[popNames.index(popDict[ind])].append(ind)
