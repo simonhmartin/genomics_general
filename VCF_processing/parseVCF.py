@@ -1,7 +1,7 @@
 #Various functions to parse and filter genotype data from vcf files.
 #If run independently it will pipe "genotypes" format to stdout. 
 
-import argparse, sys, gzip, re
+import argparse, sys, gzip, re, subprocess
 
 
 class vcfGenoData:
@@ -129,7 +129,7 @@ class gtFilter:
 
 
 
-class headData:
+class HeadData:
     
     def __init__(self, headerLines):
         self.contigs = []
@@ -141,15 +141,24 @@ class headData:
                     self.contigs.append(elements[2])
                     try: self.contigLengths[elements[2]] = int(elements[4])
                     except: self.contigLengths[elements[2]] = None
+                    
                 except:
                     pass
             
             if Line[:6] == "#CHROM":
                 self.sampleNames = Line.split()[9:]
                 self.mainHead = Line
+            
 
+def getHeadData(fileName):
+    headLines = []
+    with gzip.open(fileName, "r") if fileName.endswith(".gz") else open(fileName, "r") as fileObj:
+        for line in fileObj:
+            if line.startswith("#"): headLines.append(line)
+            else: break
+    return HeadData(headLines)
 
-class reader:
+class Reader:
     
     def __init__(self, fileObj):
         self.fileObj = fileObj
@@ -161,11 +170,11 @@ class reader:
                 line = fileObj.readline()
             else:
                 break
-        headDataDict = headData(headLines)
-        self.contigs = headDataDict.contigs
-        self.contigLengths = headDataDict.contigLengths
-        self.sampleNames = headDataDict.sampleNames
-        self.mainHead = headDataDict.mainHead
+        headData = HeadData(headLines)
+        self.contigs = headData.contigs
+        self.contigLengths = headData.contigLengths
+        self.sampleNames = headData.sampleNames
+        self.mainHead = headData.mainHead
     
     def lines(self):
         line = self.fileObj.readline()
@@ -180,6 +189,17 @@ class reader:
             yield site
             line = self.fileObj.readline()
 
+def tabixStream(fileName, chrom, start, end):
+    region = chrom+":"+str(start)+"-"+str(end)  
+    return subprocess.Popen(['tabix',fileName, region], stdout=subprocess.PIPE, bufsize=1)
+
+def tabixLines(fileName, chrom, start, end):
+    stream = tabixStream(fileName, chrom, start, end)
+    for line in iter(stream.stdout.readline, ""): yield line
+
+def tabixSites(fileName, chrom, start, end, mainHead):
+    lineGen = tabixLines(fileName, chrom, start, end)
+    for line in lineGen: yield VcfSite(line, mainHead)
 
 def canFloat(string):
     try: float(string)
@@ -187,9 +207,8 @@ def canFloat(string):
     return True
 
 
+###############################################################################################################
 if __name__ == "__main__":
-
-    #########################################################################################################################
 
 
     ### parse arguments
@@ -292,7 +311,7 @@ if __name__ == "__main__":
 
     ### read through header for all input files
 
-    vcf = reader(In)
+    vcf = Reader(In)
 
     #check specified samples are in first file. Otherwise use this entire set
 
