@@ -659,61 +659,133 @@ def popSiteFreqs(aln, minData = 0):
 
 #modules for working with windows
 
-#Window object class, stores names, sequences and window information
+##Window object class, stores names, sequences and window information
 
-class CoordWindow: 
+#class CoordWindow: 
+    #def __init__(self, scaffold = None, start = None, end = None, seqs = None, names = None, positions = None, ID = None):
+        #if not names and not seqs:
+            #names = []
+            #seqs = []
+        #elif not names:
+            #names = [None]*len(seqs)
+        #elif not seqs:
+            #seqs = [[] for name in names]
+        #assert len(names) == len(seqs)
+        #if not positions:
+            #positions = []
+        #if len(seqs) > 0:
+            ##print len(seqs[0]), len(positions)
+            #assert len(seqs[0]) == len(positions) # ensure correct number of positions is given
+            #assert len(set([len(seq) for seq in seqs])) == 1 #ensure sequences are equal length
+            #for seq in seqs:
+                #assert type(seq) is list # added sequences must each be a list
+        #self.scaffold = scaffold
+        #self.start = start
+        #self.end = end
+        #self.names = names
+        #self.positions = positions
+        #self.seqs = seqs
+        #self.n = len(self.names)
+        #self.ID = ID
+    
+    ##method for adding
+    #def addBlock(self, seqs, positions):
+        #assert len(seqs) == self.n # ensure correct number seqs is added
+        #if len(seqs) > 0:
+            #assert len(seqs[0]) == len(positions) # ensure correct number of positions is given
+            #assert len(set([len(seq) for seq in seqs])) == 1 #ensure sequences are equal length
+            #for seq in seqs:
+                #assert type(seq) is list # added sequences must each be a list
+        #for x in range(len(seqs)):
+            #self.seqs[x] += seqs[x]
+        #self.positions += positions
+    
+    #def addSite(self, GTs, position):
+        #assert len(GTs) == self.n # ensure correct number seqs is added
+        #for x in range(self.n):
+            #self.seqs[x].append(GTs[x])
+        #self.positions.append(position)
+    
+    #def seqLen(self):
+        #return len(self.positions)
+    
+    #def firstPos(self):
+        #return min(self.positions)
+    
+    #def lastPos(self):
+        #return max(self.positions)
+    
+    #def slide(self,step=None,newStart=None,newEnd=None):
+        ##function to slide window along scaffold
+        #assert step != None or newStart != None 
+        #if step:
+            #newStart = self.start + step
+            #newEnd = self.end + step            
+        #self.start = newStart
+        #if newEnd:
+            #self.end = newEnd
+        ##find first position beyon newStart
+        #i = 0
+        #while i < len(self.positions) and self.positions[i] < newStart:
+            #i += 1
+        ##slide positions
+        #self.positions = self.positions[i:]
+        ##slide seqs
+        #self.seqs = [seq[i:] for seq in self.seqs]
+    
+    #def seqDict(self):
+        #return dict(zip(self.names,self.seqs))
+    
+    #def midPos(self):
+        #try:
+            #return int(round(sum(self.positions)/len(self.positions)))
+        #except:
+            #return np.NaN
+
+
+
+#Coordinate window class - now using a numpy array
+class CoordWindow:
     def __init__(self, scaffold = None, start = None, end = None, seqs = None, names = None, positions = None, ID = None):
-        if not names and not seqs:
-            names = []
-            seqs = []
-        elif not names:
-            names = [None]*len(seqs)
-        elif not seqs:
-            seqs = [[] for name in names]
-        assert len(names) == len(seqs)
-        if not positions:
-            positions = []
-        if len(seqs) > 0:
-            #print len(seqs[0]), len(positions)
-            assert len(seqs[0]) == len(positions) # ensure correct number of positions is given
-            assert len(set([len(seq) for seq in seqs])) == 1 #ensure sequences are equal length
-            for seq in seqs:
-                assert type(seq) is list # added sequences must each be a list
+        assert names is not None or seqs is not None, "Either names or sequences must be provided"
+        if names is None: names = [None]*len(seqs)
+        self.names = names
+        self.n = len(self.names)
+        if seqs is None: self.seqs = np.empty(shape=(self.n,0), dtype=str)
+        else:
+            self.seqs = np.array(seqs)
+            assert len(self.names) == self.seqs.shape[0], "Number of names and sequences must match"
+        if positions is None: self.positions = range(1,self.seqs.shape[1]+1)
+        else:
+            assert seqs.shape[1] == len(positions), "Positions must match sequence length"
+            self.positions = positions
         self.scaffold = scaffold
         self.start = start
         self.end = end
-        self.names = names
-        self.positions = positions
-        self.seqs = seqs
-        self.n = len(self.names)
         self.ID = ID
+    
+    def copy(self): return CoordWindow(scaffold=self.scaffold, start=self.start, end=self.end,
+                                       seqs=self.seqs[:,:], names=self.names[:], positions=self.positions[:], ID=self.ID)
     
     #method for adding
     def addBlock(self, seqs, positions):
-        assert len(seqs) == self.n # ensure correct number seqs is added
-        if len(seqs) > 0:
-            assert len(seqs[0]) == len(positions) # ensure correct number of positions is given
-            assert len(set([len(seq) for seq in seqs])) == 1 #ensure sequences are equal length
-            for seq in seqs:
-                assert type(seq) is list # added sequences must each be a list
-        for x in range(len(seqs)):
-            self.seqs[x] += seqs[x]
+        seqs = np.array(seqs)
+        assert seqs.shape[0] == self.n, "incorrect number of sequnces addded"
+        assert seqs.shape[1] == len(positions), "Number of positions does not match sequence length"
+        self.seqs = np.hstack((self.seqs, seqs))
         self.positions += positions
     
     def addSite(self, GTs, position):
-        assert len(GTs) == self.n # ensure correct number seqs is added
-        for x in range(self.n):
-            self.seqs[x].append(GTs[x])
+        GTs = np.array(GTs)
+        GTs = GTs.reshape((GTs.shape[0],1))
+        self.seqs = np.append(self.seqs, GTs, axis = 1)
         self.positions.append(position)
     
-    def seqLen(self):
-        return len(self.positions)
+    def seqLen(self): return self.seqs.shape[1]
     
-    def firstPos(self):
-        return min(self.positions)
+    def firstPos(self): return min(self.positions)
     
-    def lastPos(self):
-        return max(self.positions)
+    def lastPos(self): return max(self.positions)
     
     def slide(self,step=None,newStart=None,newEnd=None):
         #function to slide window along scaffold
@@ -722,25 +794,20 @@ class CoordWindow:
             newStart = self.start + step
             newEnd = self.end + step            
         self.start = newStart
-        if newEnd:
-            self.end = newEnd
+        if newEnd: self.end = newEnd
         #find first position beyon newStart
         i = 0
-        while i < len(self.positions) and self.positions[i] < newStart:
-            i += 1
+        while i < len(self.positions) and self.positions[i] < newStart: i += 1
         #slide positions
         self.positions = self.positions[i:]
         #slide seqs
-        self.seqs = [seq[i:] for seq in self.seqs]
+        self.seqs = self.seqs[:,i:]
     
-    def seqDict(self):
-        return dict(zip(self.names,self.seqs))
+    def seqDict(self): return dict(zip(self.names,[list(s) for s in self.seqs]))
     
     def midPos(self):
-        try:
-            return int(round(sum(self.positions)/len(self.positions)))
-        except:
-            return np.NaN
+        try: return int(round(sum(self.positions)/len(self.positions)))
+        except: return np.NaN
 
 
 ##sites window class - has a fixed number of sites (old version without numpy)
@@ -821,18 +888,18 @@ class CoordWindow:
 #sites window class - has a fixed number of sites - now using a numpy array
 class SitesWindow: 
     def __init__(self, scaffold = None, seqs = None, names = None, positions = None, ID = None):
-        if not names: names = [None]*len(seqs)
+        assert names is not None or seqs is not None, "Either names or sequences must be provided"
+        if names is None: names = [None]*len(seqs)
         self.names = names
         self.n = len(self.names)
-        if not seqs: seqs = np.empty(shape=(self.n,0), dtype=str)
+        if seqs is None: self.seqs = np.empty(shape=(self.n,0), dtype=str)
         else:
-            seqs = np.array(seqs)
-            assert len(names) == seqs.shape[0]
-        self.seqs = seqs
-        if not positions: positions = []
-        self.positions = positions
-        if self.n > 0:
-            assert seqs.shape[1] == len(positions) # ensure correct number of positions is given
+            self.seqs = np.array(seqs)
+            assert len(self.names) == self.seqs.shape[0], "Number of names and sequences must match"
+        if positions is None: self.positions = range(1,self.seqs.shape[1]+1)
+        else:
+            assert seqs.shape[1] == len(positions), "Positions must match sequence length"
+            self.positions = positions
         self.scaffold = scaffold
         self.ID = ID
     
@@ -867,7 +934,7 @@ class SitesWindow:
         else:
             self.positions = self.positions[:-remove]
             #slide seqs
-            self.seqs = self.seqs[:,remove:]
+            self.seqs = self.seqs[:,-remove:]
     
     def seqDict(self): return dict(zip(self.names,[list(s) for s in self.seqs]))
     
@@ -879,44 +946,42 @@ class SitesWindow:
 #sites window class - has a fixed number of sites
 class SimpleWindow: 
     def __init__(self, seqs = None, names = None, ID=None):
-        if not names and not seqs:
-            names = []
-            seqs = []
-        elif not names: names = [None]*len(seqs)
-        elif not seqs: seqs = [[] for name in names]
-        assert len(names) == len(seqs)
-        if len(seqs) > 0:
-            assert len(set([len(seq) for seq in seqs])) == 1 #ensure sequences are equal length
-            for seq in seqs: assert type(seq) is list # added sequences must each be a list
+        assert names is not None or seqs is not None, "Either names or sequences must be provided"
+        if names is None: names = [None]*len(seqs)
         self.names = names
-        self.seqs = seqs
         self.n = len(self.names)
+        if seqs is None: self.seqs = np.empty(shape=(self.n,0), dtype=str)
+        else:
+            self.seqs = np.array(seqs)
+            assert len(self.names) == self.seqs.shape[0], "Number of names and sequences must match"
         self.ID = ID
     
     #method for adding
     def addBlock(self, seqs):
-        assert len(seqs) == self.n # ensure correct number seqs is added
-        if len(seqs) > 0:
-            assert len(set([len(seq) for seq in seqs])) == 1 #ensure sequences are equal length
-            for seq in seqs: assert type(seq) is list # added sequences must each be a list
-        for x in range(len(seqs)): self.seqs[x] += seqs[x]
+        seqs = np.array(seqs)
+        assert seqs.shape[0] == self.n, "incorrect number of sequnces addded"
+        assert seqs.shape[1] == len(positions), "Number of positions does not match sequence length"
+        self.seqs = np.hstack((self.seqs, seqs))
     
     def addSite(self, GTs):
-        assert len(GTs) == self.n # ensure correct number seqs is added
-        for x in range(self.n): self.seqs[x].append(GTs[x])
+        GTs = np.array(GTs)
+        GTs = GTs.reshape((GTs.shape[0],1))
+        self.seqs = np.append(self.seqs, GTs, axis = 1)
+        
+    def seqLen(self): return self.seqs.shape[1]
     
-    def seqLen(self):
-        return len(self.seqs[0])
+    def firstPos(self): return min(self.positions)
+    
+    def lastPos(self): return max(self.positions)
     
     def trim(self,right=False,remove=None,leave=None):
         assert remove != None or leave != None
         if not remove: remove=self.seqLen() - leave
-        #trim seqs
-        if not right: self.seqs = [seq[remove:] for seq in self.seqs]
-        else: self.seqs = [seq[:-remove] for seq in self.seqs]
+        if not right: self.seqs = self.seqs[:,remove:]
+        else: self.seqs = self.seqs[:,-remove:]
     
-    def seqDict(self): return dict(zip(self.names,self.seqs))
-    
+    def seqDict(self): return dict(zip(self.names,[list(s) for s in self.seqs]))
+
 
 #site object class for storing the information about a single site
 class Site:
