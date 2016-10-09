@@ -29,7 +29,7 @@ def analysisWrapper(inQueue,outQueue,headers,include,exclude,samples,minCalls,mi
                                 minAlleles=minAlleles,maxAlleles=maxAlleles,minVarCount=minVarCount,
                                 maxHet=maxHet,minFreq=minFreq,maxFreq=maxFreq,HWE_P=HWE_P,HWE_side=HWE_side,fixed=fixed)
             if goodSite:
-                outLine = " ".join(objects[:2] + site.asList(samples, mode=mode)) + "\n"
+                outLine = "\t".join(objects[:2] + site.asList(samples, mode=mode)) + "\n"
                 outPod.append((lineNumber,outLine))
             #if verbose: print >> sys.stderr, objects[0], objects[1], "passed: ", goodSite
         outQueue.put((podNumber,outPod))
@@ -242,7 +242,7 @@ if samples:
 else:
     samples = allSamples
 
-Out.write(" ".join(headers[0:2] + samples) + "\n")
+Out.write("\t".join(headers[0:2] + samples) + "\n")
 
 for popName in popDict.keys():
     for sample in popDict[popName]:
