@@ -100,12 +100,20 @@ parser.add_argument("--windType", help="Type of windows to make", action = "stor
 parser.add_argument("-w", "--windSize", help="Window size in bases", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-s", "--stepSize", help="Step size for sliding window", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-m", "--minSites", help="Minumum good sites per window", type=int, action = "store", required = False, metavar="sites", default = 1)
-parser.add_argument("-O", "--overlap", help="Overlap for sites sliding window", type=int, action = "store", required = False, metavar="sites")
+parser.add_argument("--overlap", help="Overlap for sites sliding window", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-D", "--maxDist", help="Maximum span distance for sites window", type=int, action = "store", required = False)
 parser.add_argument("--windCoords", help="Window coordinates file (scaffold start end)", required = False)
 parser.add_argument("--minData", help="Min proportion of samples genotped per site", type=float, action="store", required = False, default = 0.01, metavar = "proportion")
 
-parser.add_argument("-p", "--population", help="Pop name and ind names (separated by commas)", action='append', nargs=2, required = True, metavar=("name","inds"))
+parser.add_argument("-P1", "--pop1", help="Pop name and optionally sample names (separated by commas)",
+                    required = True, action='store', nargs="+", metavar=("popName","[samples]"))
+parser.add_argument("-P2", "--pop2", help="Pop name and optionally sample names (separated by commas)",
+                    required = True, action='store', nargs="+", metavar=("popName","[samples]"))
+parser.add_argument("-P3", "--pop3", help="Pop name and optionally sample names (separated by commas)",
+                    required = True, action='store', nargs="+", metavar=("popName","[samples]"))
+parser.add_argument("-O", "--outgroup", help="Pop name and optionally sample names (separated by commas)",
+                    required = True, action='store', nargs="+", metavar=("popName","[samples]"))
+parser.add_argument("--popsFile", help="Optional file of sample names and populations", action = "store", required = False)
 parser.add_argument("--haploid", help="Samples that are haploid (comma separated)", action = "store", metavar = "sample names")
 
 parser.add_argument("-g", "--genoFile", help="Input genotypes file", required = True)
@@ -171,13 +179,21 @@ verbose = args.verbose
 
 
 ############## parse populations
-pops = args.population
 
-popNames = [p[0] for p in pops]
-print popNames
-assert sorted(popNames) == ["O","P1","P2","P3"], "Populations must be named P1, P2, P3 and O."
+popNames = []
+popInds = []
+for p in [args.pop1, args.pop2, args.pop3, args.outgroup]:
+    popNames.append(p[0])
+    if len(p) > 1: popInds.append(p[1].split(","))
+    else: popInds.append([])
 
-popInds = [p[1].split(",") for p in pops]
+if args.popsFile:
+    with open(args.popsFile, "r") as pf: popDict = dict([ln.split() for ln in pf])
+    for ind in popDict.keys():
+        try: popInds[popNames.index(popDict[ind])].append(ind)
+        except: pass
+
+for p in popInds: assert len(p) >= 1, "All populations must be represented by at least one sample."
 
 allInds = list(set([i for p in popInds for i in p]))
 
@@ -242,7 +258,8 @@ writeQueue = SimpleQueue()
 of course these will only start doing anything after we put data into the line queue
 the function we call is actually a wrapper for another function.(s) This one reads from the line queue, passes to some analysis function(s), gets the results and sends to the result queue'''
 for x in range(threads):
-  worker = Process(target=ABBABABA_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, sampleData, "P1", "P2", "P3", "O", minData, minSites,))
+  worker = Process(target=ABBABABA_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, sampleData,
+                                                    popNames[0], popNames[1], popNames[2], popNames[3], minData, minSites,))
   worker.daemon = True
   worker.start()
 
