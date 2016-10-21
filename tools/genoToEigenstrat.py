@@ -1,8 +1,6 @@
 import sys,argparse,gzip
 import genomics
 
-chromInt = {"chr1":"1", "chr2":"2", "chr3":"3", "chr4":"4", "chr5":"5", "chr6":"6", "chr7":"7", "chr8":"8", "chr9":"9", "chr10":"10", "chr11":"11", "chr12":"12", "chr13":"13", "chr14":"14", "chr15":"15", "chr16":"16", "chr17":"17", "chr18":"18", "chr19":"19", "chr20":"20", "chrZ":"23", "chr21":"23"}
-
 parser = argparse.ArgumentParser()
 parser.add_argument("-g", "--genoFile", help="Input vcf file", action = "store")
 parser.add_argument("-f", "--genoFormat", help="Genotype format [otherwise will be inferred (slower)]", action = "store",choices = ["phased","diplo","paired"])
@@ -10,6 +8,8 @@ parser.add_argument("--genoOutFile", help="Output Eigenstrat geno file", action 
 parser.add_argument("--snpOutFile", help="Output Eigenstrat snp file", action = "store", required = True)
 parser.add_argument("-s", "--samples", help="Analysis threads", action = "store")
 parser.add_argument("--skipChecks", help="Skip genotype checks to speed things up", action = "store_true")
+parser.add_argument("--chromFile", help="Input chromosome number file", action = "store")
+
 
 args = parser.parse_args()
 
@@ -26,6 +26,17 @@ allNames = headers[2:]
 if args.samples is None: samples = allNames
 else: samples = args.samples
 
+
+if args.chromFile:
+    chromsProvided = True
+    chromDict = {}
+    with open(args.chromFile, "r") as chromFile:
+        for line in chromFile:
+            scaf, chrom = line.split()
+            chromDict[scaf] = chrom
+
+else: chromsProvided = False
+
 linesDone = 0
 
 for line in genoFile:
@@ -38,7 +49,12 @@ for line in genoFile:
 
         genoOut.write("".join([str(c) for c in counts]) + "\n")
         
-        snpOut.write(str(linesDone) + "\t" + chromInt[site.scaffold] + "\t" + "0.0" + "\t" + str(site.position) + "\n")
+        if chromsProvided:
+            try: chromNo = chromDict[site.scaffold]
+            except: chromNo = "0"
+            snpOut.write(str(linesDone) + "\t" + chromNo + "\t" + "0.0" + "\t" + str(site.position) + "\n")
+        else:
+            snpOut.write(str(linesDone) + "\t0\t" + "0.0" + "\t" + str(site.position) + "\n")
 
     linesDone += 1
     if linesDone % 100000 == 0: print linesDone, "lines done..."
