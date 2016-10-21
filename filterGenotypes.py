@@ -12,9 +12,9 @@ from time import sleep
 #######################################################################################################################
 
 '''main worker function. This will watch the inQueue for pods, and pass lines from these pods to be parsed and filtered, before packaging back into a pod and sending on to the resultQueue'''
-def analysisWrapper(inQueue,outQueue,headers,include,exclude,samples,minCalls,minPopCalls,
+def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,headers,include,exclude,samples,minCalls,minPopCalls,
                     minAlleles,maxAlleles,minVarCount,maxHet,minFreq,maxFreq,
-                    HWE_P,HWE_side,popDict,ploidyDict,fixed,mode):
+                    HWE_P,HWE_side,popDict,ploidyDict,fixed,skipChecks):
     while True:
         podNumber,inPod = inQueue.get()
         if verbose: print >> sys.stderr, "Pod", podNumber, "received for analysis."
@@ -24,12 +24,13 @@ def analysisWrapper(inQueue,outQueue,headers,include,exclude,samples,minCalls,mi
             #if verbose: print >> sys.stderr, "Analysing line", lineNumber
             objects = line.split()
             if (include and objects[0] not in include) or (exclude and objects[0] in exclude): continue
-            site = genomics.GenomeSite(genotypes=objects[2:], sampleNames=headers[2:], popDict=popDict, ploidyDict=ploidyDict)
+            site = genomics.GenomeSite(genotypes=objects[2:], sampleNames=headers[2:], popDict=popDict,
+                                       ploidyDict=ploidyDict, genoFormat=inputGenoFormat, skipChecks=skipChecks)
             goodSite = genomics.siteTest(site,samples=samples,minCalls=minCalls,minPopCalls=minPopCalls,
                                 minAlleles=minAlleles,maxAlleles=maxAlleles,minVarCount=minVarCount,
                                 maxHet=maxHet,minFreq=minFreq,maxFreq=maxFreq,HWE_P=HWE_P,HWE_side=HWE_side,fixed=fixed)
             if goodSite:
-                outLine = "\t".join(objects[:2] + site.asList(samples, mode=mode)) + "\n"
+                outLine = "\t".join(objects[:2] + site.asList(samples, mode=outputGenoFormat)) + "\n"
                 outPod.append((lineNumber,outLine))
             #if verbose: print >> sys.stderr, objects[0], objects[1], "passed: ", goodSite
         outQueue.put((podNumber,outPod))
@@ -108,7 +109,10 @@ parser.add_argument("-i", "--infile", help="Input vcf file", action = "store", r
 parser.add_argument("-o", "--outfile", help="Output csv file", action = "store")
 parser.add_argument("-t", "--threads", help="Analysis threads", type=int, action = "store", default = 1)
 parser.add_argument("--verbose", help="Verbose output.", action = "store_true")
-parser.add_argument("-m", "--mode", help="Data format for output", action = "store", choices = ("phased","diplo","alleles"), default = "phased")
+
+parser.add_argument("-if", "--inputGenoFormat", help="Genotype format [otherwise will be inferred (slower)]", action = "store",choices = ["phased","diplo","alleles"])
+parser.add_argument("-of", "--outputGenoFormat", help="Genotype format for output", action = "store", choices = ("phased","diplo","alleles"), default = "phased")
+
 
 #specific samples
 parser.add_argument("-s", "--samples", help="sample names (separated by commas)", action='store')
@@ -139,6 +143,10 @@ parser.add_argument("--HWE", help="Hardy-Weinberg equalibrium test P-value and s
 parser.add_argument("--minPopCalls", help="Minimum number of good genotype calls per pop (comma separated)", action = "store", metavar = "integer")
 parser.add_argument("--fixedDiffs", help="Only variants where differences are fixed between pops", action = "store_true")
 
+parser.add_argument("--skipChecks", help="Skip genotype checks to speed things up", action = "store_true")
+
+parser.add_argument("--podSize", help="Lines to analyse in each thread simultaneously", type=int, action = "store", default = 100000)
+
 
 
 
@@ -146,8 +154,6 @@ args = parser.parse_args()
 
 infile = args.infile
 outfile = args.outfile
-
-mode = args.mode
 
 samples = args.samples
 
@@ -278,9 +284,9 @@ of course these will only start doing anything after we put data into the line q
 the function we call is actually a wrapper for another function.(s)
 This one reads from the pod queue, passes each line some analysis function(s), gets the results and sends to the result queue'''
 for x in range(nProcs):
-    worker = Process(target=analysisWrapper,args=(inQueue,doneQueue,headers,include,exclude,samples,minCalls,minPopCalls,
+    worker = Process(target=analysisWrapper,args=(inQueue,doneQueue,args.inputGenoFormat,args.outputGenoFormat,headers,include,exclude,samples,minCalls,minPopCalls,
                     minAlleles,maxAlleles,minVarCount,maxHet,minFreq,maxFreq,
-                    HWE_P,HWE_side,popDict,ploidyDict,fixed,mode,))
+                    HWE_P,HWE_side,popDict,ploidyDict,fixed,args.skipChecks,))
     worker.daemon = True
     worker.start()
 
@@ -306,7 +312,7 @@ worker.start()
 
 #place lines into pods
 #pass pods on to processor(s)
-podSize = 100000
+podSize = args.podSize
 
 lineGen = lineReader(In)
 pod = []
