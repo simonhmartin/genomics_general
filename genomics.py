@@ -28,18 +28,40 @@ def homo(diplo): return diploHomoDict[diplo]
 numSeqDict = {"A":0,"C":1,"G":2,"T":3,"N":np.NaN}
 
 class Genotype:
-    def __init__(self, geno, haploid = False):
-        if len(geno) == 1 and geno in DIPLOTYPES:
+    def __init__(self, geno, haploid = False, genoFormat=None, skipChecks = False):
+        if genoFormat is None:
+            l = len(geno)
+            if l == 1: genoFormat = "diplo"
+            elif l == 2: genoFormat = "paired"
+            elif l == 3: genoFormat = "phased"
+        if not skipChecks:
+            if genoFormat == "phased":
+                assert geno[1] in ["|","/"] and "".join(sorted(geno.split(geno[1]))) in PAIRS, "Unrecognised Genotype"
+                self.alleles = [geno[0],geno[2]]
+                self.phase = geno[1]
+            elif genoFormat == "diplo":
+                assert geno in DIPLOTYPES, "Unrecognised Genotype"
+                self.alleles = list(haplo(geno))
+                self.phase = "/"
+            elif genoFormat == "paired":
+                assert "".join(sorted(geno)) in PAIRS, "Unrecognised Genotype"
+                self.alleles = list(geno)
+                self.phase = "/"
+            else: raise ValueError("Invalid genotype format")
+        
+        elif genoFormat == "phased":
+            self.alleles = [geno[0],geno[2]]
+            self.phase = geno[1]
+        elif genoFormat == "diplo":
             self.alleles = list(haplo(geno))
             self.phase = "/"
-        elif len(geno) == 2 and "".join(sorted(geno)) in PAIRS:
+        elif genoFormat == "paired":
             self.alleles = list(geno)
             self.phase = "/"
-        elif len(geno) == 3 and geno[1] in ["|","/"] and "".join(sorted(geno.split(geno[1]))) in PAIRS:
-            self.alleles = geno.split(geno[1])
-            self.phase = geno[1]
         else:
-            raise ValueError("Unrecognised Genotype")
+            raise ValueError("Invalid genotype format")
+        
+        self.numAlleles = [numSeqDict[a] for a in self.alleles]
         
         if haploid:
             assert self.alleles[0] == self.alleles[1], "Biallelic genotype cannot be assigned as haploid"
@@ -58,8 +80,20 @@ class Genotype:
     def asDiplo(self):
         if self.isHaploid(): return self.alleles[0]
         else: return diplo("".join(sorted(self.alleles)))
-
-
+    
+    def asCoded(self, codeDict, missing = None): #code alleles e.g. 0 and 1, with phase (0/1)
+        if missing is None: missing = "."
+        if self.isHaploid():
+            try: return codeDict[self.alleles[0]]
+            except: return missing
+        else:
+            try: return self.phase.join([codeDict[a] for a in self.alleles])
+            except: return missing + self.phase + missing
+    
+    def asCount(self, countAllele, missing = None): # code whole genotype as single value
+        if missing is None: missing = 9
+        try: return np.bincount(self.numAlleles, minlength = 4)[numSeqDict[countAllele]]
+        except: return missing
 
 
 #function to take raw genomic sequence, and the coordinates of exons, and export the concatenated CDS 
@@ -131,7 +165,8 @@ def forceHomo(sequence):
 
 class GenomeSite:
     
-    def __init__(self, genoDict = None, genotypes = None, sampleNames = None, contig = None, position = 0, popDict = {}, ploidyDict = None):
+    def __init__(self, genoDict = None, genotypes = None, sampleNames = None, contig = None, position = 0, popDict = {},
+                 genoFormat = None, ploidyDict = None, skipChecks = False):
         #genotypes is a list of genotypes as strings, lists or tuples in any format. e.g. ['AT', 'W', 'T|A', ('A','T)]
         #or use genoDict, which is a dictionary with sample names as the keys. Again, all genotype formats accepted
         if not genoDict:
@@ -153,25 +188,38 @@ class GenomeSite:
                 self.ploidy[sample] = 2
         self.genotypes = {}
         for sample in self.sampleNames:
-            self.genotypes[sample] = Genotype(genoDict[sample], haploid = self.ploidy[sample] == 1)
+            self.genotypes[sample] = Genotype(genoDict[sample], haploid = self.ploidy[sample] == 1,
+                                              genoFormat=genoFormat, skipChecks = skipChecks)
     
-    def asList(self, samples = None, pop = None, mode = "phased"):
+    def asList(self, samples = None, pop = None, mode = "phased", alleles = None, codeDict=None, missing=None):
         if pop: samples = self.pops[pop]
         if not samples: samples = self.sampleNames
         if mode == "bases":
-            return sum([self.genotypes[sample].alleles for sample in samples],[])
-        elif mode == "phased":
+            return [a for alleles in [self.genotypes[sample].alleles for sample in samples] for a in alleles]
+        elif mode == "phased": # like 'A|T' 
             return [self.genotypes[sample].asPhased() for sample in samples]
-        elif mode == "diplo":
+        elif mode == "diplo": #ACGT and KMRSYW for hets
             return [self.genotypes[sample].asDiplo() for sample in samples]
-        elif mode == "alleles":
+        elif mode == "alleles": #just bases with no phase
             return [self.genotypes[sample].alleles for sample in samples]
+        elif mode == "coded": # vcf format '0/1' - optionally alleles can be provided (REF first)
+            if alleles is None: alleles = self.alleles(byFreq = True)
+            if codeDict is None: codeDict = dict(zip(alleles, [str(x) for x in range(len(alleles))]))
+            return [self.genotypes[sample].asCoded(codeDict, missing) for sample in samples]
+        elif mode == "count": # vcf format '0/1' - optionally alleles can be provided (REF first)
+            if alleles is None: alleles = self.alleles(byFreq = True)
+            countAllele = alleles[-1]
+            return [self.genotypes[sample].asCount(countAllele,missing) for sample in samples]
         else:
-            raise ValueError("mode must be 'bases', 'phased', 'diplo' or 'alleles'")
+            raise ValueError("mode must be 'bases', 'phased', 'diplo', 'alleles', 'coded', or 'count'")
     
-    def alleles(self, samples = None, pop=None):
+    def alleles(self, samples = None, pop=None, byFreq = False):
         if pop: samples = self.pops[pop]
-        return sorted(list(set([b for b in self.asList(samples = samples, mode = "bases") if b != "N"])))
+        if not samples: samples = self.sampleNames
+        bases = [a for alleles in [self.genotypes[sample].alleles for sample in samples] for a in alleles]
+        alleles, counts = np.unique([b for b in bases if b in "ACGT"], return_counts = True)
+        if byFreq: return list(alleles[np.argsort(counts)[::-1]])
+        else: return sorted(list(alleles))
     
     def nsamp(self): return len(self.sampleNames)
     
@@ -396,7 +444,7 @@ class Alignment:
             self.groupIndDict = groupIndDict
             self.indGroupDict = invertDictOfLists(self.groupIndDict)
             for name in self.names:
-                if name not in self.indGroupDict: self.indGroupDic[name] = []
+                if name not in self.indGroupDict: self.indGroupDict[name] = []
             self.groups = np.array([self.indGroupDict[n] for n in self.names])
         else:
             self.groups = np.array([None]*self.N) #groups is just a list of names, giving the group name for each sample
