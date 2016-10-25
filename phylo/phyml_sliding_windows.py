@@ -183,11 +183,13 @@ parser.add_argument("-O", "--overlap", help="Overlap for sites sliding window", 
 parser.add_argument("-D", "--maxDist", help="Maximum span distance for sites window", type=int, action = "store", required = False)
 parser.add_argument("--windCoords", help="Window coordinates file (scaffold start end)", required = False)
 
-parser.add_argument("-g", "--genoFile", help="Input genotypes file", required = True)
+parser.add_argument("-g", "--genoFile", help="Input genotypes file")
 parser.add_argument("-p", "--prefix", help="Prefix for output files", required = True)
 
-parser.add_argument("--exclude", help="File of scaffolds to exclude", required = False)
-parser.add_argument("--include", help="File of scaffolds to analyse", required = False)
+parser.add_argument("--exclude", help="List of scaffolds to exclude (comma separated)", required = False)
+parser.add_argument("--include", help="List of scaffolds to analyse (comma separated)", required = False)
+parser.add_argument("--excludeFile", help="File of scaffolds to exclude", required = False)
+parser.add_argument("--includeFile", help="File of scaffolds to analyse", required = False)
 
 parser.add_argument("-f", "--genoFormat", help="Format of genotypes in genotypes file", action='store', choices = ("phased","haplo"), required = True)
 
@@ -252,7 +254,6 @@ minPerInd = args.minPerInd
 if not minPerInd: minPerInd = minSites
 
 
-genoFileName = args.genoFile
 genoFormat = args.genoFormat
 
 
@@ -275,9 +276,6 @@ prefix = args.prefix
 
 log = args.log
 
-exclude = args.exclude
-include = args.include
-
 threads = args.threads
 
 phyml = args.phyml
@@ -290,9 +288,8 @@ bootstraps = args.bootstraps
 
 #open files
 
-if genoFileName[-3:] == ".gz": genoFile = gzip.open(genoFileName, "r")
-else: genoFile = open(genoFileName, "r")
-
+if args.genoFile: genoFile = gzip.open(args.genoFile, "r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r")
+else genoFile = sys.stdin
 
 dataFile = open(prefix + ".data.tsv", "w")
 
@@ -317,13 +314,19 @@ print >> sys.stderr, "\nTemporary Phyml files will be stored in", tmpDir
 
 #scafs to exclude
 
-if exclude:
-    with open(exclude, "rU") as scafsFile: scafsToExclude = [line.rstrip() for line in scafsFile]
+if args.exclude:
+    scafsToExclude = args.exclude.split(",")
+    print >> sys.stderr, len(scafsToExclude), "scaffolds will be excluded."
+elif args.excludeFile:
+    with open(args.excludeFile, "rU") as scafsFile: scafsToExclude = [line.rstrip() for line in scafsFile]
     print >> sys.stderr, len(scafsToExclude), "scaffolds will be excluded."
 else: scafsToExclude = None
 
-if include:
-    with open(include, "rU") as scafsFile: scafsToInclude = [line.rstrip() for line in scafsFile]
+if args.include:
+    scafsToInclude = args.include.split(",")
+    print >> sys.stderr, len(scafsToInclude), "scaffolds will be abalysed."
+elif args.includeFile:
+    with open(args.includeFile, "rU") as scafsFile: scafsToInclude = [line.rstrip() for line in scafsFile]
     print >> sys.stderr, len(scafsToInclude), "scaffolds will be analysed."
 else: scafsToInclude = None
 
