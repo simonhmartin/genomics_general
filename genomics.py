@@ -96,6 +96,33 @@ class Genotype:
         except: return missing
 
 
+#function takes gff file and retrieves coordinates of all CDSs for all mRNAs
+def parseGenes(gffLines):
+  output = {}
+  for gffLine in gffLines:
+    if len(gffLine) > 1 and gffLine[0] != "#":
+      gffObjects = gffLine.split()
+      #store all mRNA and CDS data for the particular scaffold
+      scaffold = gffObjects[0]
+      if scaffold not in output.keys():
+        output[scaffold] = {}
+      if gffObjects[2] == "mRNA":
+        #we've found a new mRNA
+        mRNA = gffObjects[-1].split(";")[0].split("=")[-1]
+        if mRNA not in output[scaffold].keys():
+          output[scaffold][mRNA] = {'start':int(gffObjects[3]), 'end':int(gffObjects[4]), 'strand':gffObjects[6], 'exons':0, 'cdsStarts':[], 'cdsEnds':[]}
+      elif gffObjects[2] == "CDS":
+        #we're reading CDSs for an existing mRNA
+        mRNA = gffObjects[-1].split(";")[0].split("=")[-1]
+        start = int(gffObjects[3])
+        end = int(gffObjects[4])
+        output[scaffold][mRNA]['exons'] += 1
+        output[scaffold][mRNA]['cdsStarts'].append(start)
+        output[scaffold][mRNA]['cdsEnds'].append(end)
+  return(output)
+
+
+
 #function to take raw genomic sequence, and the coordinates of exons, and export the concatenated CDS 
 
 #translation table for bases
@@ -104,23 +131,31 @@ outtab = "TGCAMKYRN"
 trantab = maketrans(intab, outtab)
 
 
+#function to extract a CDS sequence from a genomic sequence given the exon starts, ands and strand
 def CDS(seq, seqPos, exonStarts, exonEnds, strand):
   assert len(exonStarts) == len(exonEnds)
+  assert len(seq) == len(seqPos)
+  seqDict = dict(zip(seqPos,seq))
   cdsSeq = []
   for x in range(len(exonStarts)):
-    positions = range(exonStarts[x] - 1, exonEnds[x])
-    # flip numbers if orientation is reverse
+    positions = range(exonStarts[x], exonEnds[x]+1)
+    # flip positions if orientation is reverse
     if strand == "-":
-      numbers.reverse()
+      positions.reverse()
       #retrieve bases from seq
     for p in positions:
-      if p in seqPos:
-        cdsSeq.append(seq[seqPos.index[p]])
-      else:
+      try:
+        cdsSeq.append(seqDict[p])
+      except:
         cdsSeq.append("N")
   cdsSeq = "".join(cdsSeq)  
+  #translate if necessary
   if strand == "-":
     cdsSeq = cdsSeq.translate(trantab)
+  #if not a multiple of three, remove trailing bases
+  overhang = len(cdsSeq) % 3
+  if overhang != 0:
+    cdsSeq = cdsSeq[:-overhang]
   return cdsSeq
 
 
@@ -993,7 +1028,7 @@ class SitesWindow:
 
 #sites window class - has a fixed number of sites
 class SimpleWindow: 
-    def __init__(self, seqs = None, names = None, ID=None):
+    def __init__(self, seqs = None, positions = None, names = None, ID=None):
         assert names is not None or seqs is not None, "Either names or sequences must be provided"
         if names is None: names = [None]*len(seqs)
         self.names = names
@@ -1002,31 +1037,30 @@ class SimpleWindow:
         else:
             self.seqs = np.array(seqs)
             assert len(self.names) == self.seqs.shape[0], "Number of names and sequences must match"
+        if positions is None: self.positions = range(1,self.seqs.shape[1]+1)
+        else:
+            assert seqs.shape[1] == len(positions), "Positions must match sequence length"
+            self.positions = positions
         self.ID = ID
     
     #method for adding
-    def addBlock(self, seqs):
+    def addBlock(self, seqs, positions=None):
         seqs = np.array(seqs)
         assert seqs.shape[0] == self.n, "incorrect number of sequnces addded"
-        assert seqs.shape[1] == len(positions), "Number of positions does not match sequence length"
         self.seqs = np.hstack((self.seqs, seqs))
+        if positions is not None:
+            assert seqs.shape[1] == len(positions), "Number of positions does not match sequence length"
+            self.positions += positions
+        else: self.positions += range(self.positions[-1]+1,self.positions[-1]+1, self.positions[-1]+seqs.shape[1])
     
-    def addSite(self, GTs):
+    def addSite(self, GTs, position=None):
         GTs = np.array(GTs)
         GTs = GTs.reshape((GTs.shape[0],1))
         self.seqs = np.append(self.seqs, GTs, axis = 1)
-        
+        if position is not None: self.positions.append(position)
+        else: self.positions.append(self.positions[-1]+1)
+    
     def seqLen(self): return self.seqs.shape[1]
-    
-    def firstPos(self): return min(self.positions)
-    
-    def lastPos(self): return max(self.positions)
-    
-    def trim(self,right=False,remove=None,leave=None):
-        assert remove != None or leave != None
-        if not remove: remove=self.seqLen() - leave
-        if not right: self.seqs = self.seqs[:,remove:]
-        else: self.seqs = self.seqs[:,-remove:]
     
     def seqDict(self): return dict(zip(self.names,[list(s) for s in self.seqs]))
 
@@ -1314,9 +1348,9 @@ def nonOverlappingSitesWindows(genoFile, windSites, names = None, splitPhased=Fa
 
 
 #function to read entire genoFile into a window-like object
-def parseGenoFile(genoFile, names = None,splitPhased=False):
+def parseGenoFile(genoFile, names = None, includePositions = False, splitPhased=False, headerLine = None):
     #get file headers
-    headers = genoFile.readline().split()
+    headers = genoFile.readline().split() if headerLine is None else headerLine.split()
     allNames = headers[2:]
     if not names: names = allNames
     if splitPhased:
@@ -1326,17 +1360,10 @@ def parseGenoFile(genoFile, names = None,splitPhased=False):
     columns = dict(zip(names, [allNames.index(name) for name in names])) # records site column for each name
     #initialise an empty window
     window = SimpleWindow(names = names)
-    #read first line
-    line = genoFile.readline()
-    site = parseGenoLine(line,splitPhased)
-    while line:
-        window.addSite(GTs=[site.GTs[columns[name]] for name in names])
-        #read next line
-        line = genoFile.readline()
+    for line in iter(genoFile.readline,''):
         site = parseGenoLine(line,splitPhased)
-        #if we've reached the end of the file, break
-        if len(line) <= 1:
-            break
+        pos = site.position if includePositions else None
+        window.addSite(GTs=[site.GTs[columns[name]] for name in names], position=pos)
     
     return window
 
