@@ -289,7 +289,7 @@ bootstraps = args.bootstraps
 #open files
 
 if args.genoFile: genoFile = gzip.open(args.genoFile, "r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r")
-else genoFile = sys.stdin
+else: genoFile = sys.stdin
 
 dataFile = open(prefix + ".data.tsv", "w")
 

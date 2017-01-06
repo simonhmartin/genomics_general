@@ -216,8 +216,8 @@ model = args.model
 
 #open files
 
-if genoFileName[-3:] == ".gz": genoFile = gzip.open(genoFileName, "r")
-else: genoFile = open(genoFileName, "r")
+if args.genoFile: genoFile = gzip.open(args.genoFile, "r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r")
+else: genoFile = sys.stdin
 
 
 dataFile = open(prefix + ".data.tsv", "w")
