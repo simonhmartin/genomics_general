@@ -9,7 +9,7 @@ from time import sleep
 
 ##################################################
 
-def parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, skipIndels, outSep):
+def parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, skipIndels, missing, ploidy, outSep):
     n = len(fileNames)
     sitesGenerators = [parseVCF.tabixSites(fileNames[x], scaffold, start, end, headData[x].mainHead) for x in range(n)]
 
@@ -27,20 +27,19 @@ def parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, 
             if currentSites[x] and currentSites[x].POS == pos:
                 #get genotypes and add to output
                 if not skipIndels or currentSites[x].getType() is not "indel":
-                    genotypes = currentSites[x].getGenotypes(gtFilters,asList=True)
+                    genotypes = currentSites[x].getGenotypes(gtFilters,asList=True,withPhase=True,missing=missing,allowOnly="ACGT")
                     filesRepresented += 1
-                else: genotypes = ["N/N"]*(len(headData[x].sampleNames))
+                else: genotypes = ["/".join([missing]*ploidy)]*(len(headData[x].sampleNames))
                 try: currentSites[x] = sitesGenerators[x].next()
                 except: currentSites[x] = None
             else:
                 #if not a match, add Ns for this file, and dont read next line
-                genotypes = ["N/N"]*(len(headData[x].sampleNames))
+                genotypes = ["/".join([missing]*ploidy)]*(len(headData[x].sampleNames))
             outObjects += genotypes
         #so now we've created the output, but need to decide if we can write it
         if method == "all" or (method == "union" and filesRepresented >= 1) or (method == "intersect" and filesRepresented == n):
             outLines.append(outSep.join(outObjects) + "\n")
-    return outLines
-        #and thats it. Move on to the next site in the genome
+    return outLines #and thats it. Move on to the next site in the genome
 
 
 def parseAndMergeWrapper(inQueue, outQueue, fileNames, headData, gtFilters, method, skipIndels, outSep):
@@ -126,12 +125,13 @@ parser.add_argument("--test", help="Test - runs 10 windows", action='store_true'
 #vcf parsing arguments
 parser.add_argument("--gtf", help="Genotype filter. Syntax: flag=X min=X max=X siteTypes=X,X.. gtTypes=X,X.. samples=X,X..", action = "append", nargs = '+')
 parser.add_argument("--skipIndels", help="Skip indels", action = "store_true")
+parser.add_argument("--missing", help="Value to use for missing data", action = "store", default = "N")
+parser.add_argument("--ploidy", help="Ploidy for missing data", action = "store", type = int, default = 2)
 
 args = parser.parse_args()
 
 infiles = args.infile
 outfile = args.outfile
-method = args.method
 
 include = []
 exclude = []
@@ -172,8 +172,6 @@ if args.gtf:
             print >> sys.stderr, "Bad genotype filter specification. See help."  
             raise
 
-
-skipIndels = args.skipIndels
 
 outSep = " " if args.space else "\t"
 
@@ -222,7 +220,8 @@ of course these will only start doing anything after we put data into the line q
 the function we call is actually a wrapper for another function.(s)
 This one reads from the pod queue, passes each line some analysis function(s), gets the results and sends to the result queue'''
 for x in range(args.threads):
-    worker = Process(target=parseAndMergeWrapper,args=(inQueue, outQueue, infiles, headData, gtFilters, method, skipIndels, outSep))
+    worker = Process(target=parseAndMergeWrapper,args=(inQueue, outQueue, infiles, headData, gtFilters, args.method,
+                                                       args.skipIndels, args.missing, args.ploidy, outSep))
     worker.daemon = True
     worker.start()
 

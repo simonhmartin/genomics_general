@@ -11,17 +11,22 @@ class vcfGenoData:
         genoInfo = genoList
         for x in range(len(genoInfo)):
             setattr(self, genoInfoNames[x], genoInfo[x])
-        try:
-            self.phase = self.GT[1]
-            self.alleles = self.GT.split(self.phase)
-        except:
-            raise ValueError, "Error parsing genotype. Check genotype field."
+        if self.hasattr("GT"):
+            if len(self.GT) == 3:
+                self.phase = self.GT[1]
+                self.alleles = self.GT.split(self.phase)
+            elif len(self.GT) == 1:
+                self.phase = ""
+                self.alleles = self.GT
+            else: raise ValueError, "Error parsing genotype. Check genotype field."
     
     def getType(self):
-        if self.alleles[0] == self.alleles[1] == "0": return "HomRef"
+        if not self.hasattr("GT"): return None
+        elif len(self.alleles) == 1: return "Haploid"
+        elif self.alleles[0] == self.alleles[1] == "0": return "HomRef"
         elif self.alleles[0] != self.alleles[1]: return "Het"
         elif self.alleles[0] == self.alleles[1] != ".": return "HomAlt"
-        else: return "Null"
+        else: return "Missing"
 
 
 class VcfSite:
@@ -51,14 +56,11 @@ class VcfSite:
             self.genoData[sampleName] = vcfGenoData(genoInfoNames, lineDict[sampleName].split(":"))
     
     
-    def getGenotype(self, sample, gtFilters = [], withPhase=True, asNumbers = False):
+    def getGenotype(self, sample, gtFilters = [], withPhase=True, asNumbers = False, missing = None, allowOnly=None):
         genoData = self.genoData[sample]
-        alleles = [self.REF]+self.ALT
-        #start by setting a null genotype
-        if asNumbers: nullAlleles = [".","."]
-        else: nullAlleles = ["N","N"]
-        if withPhase: output = "/".join(nullAlleles)
-        else: output = "".join(nullAlleles)
+        if missing is None:
+            if asNumbers: missing = "."
+            else: missing = "N"
         
         #check each gt filter
         passed = True
@@ -73,34 +75,29 @@ class VcfSite:
                 passed = False
                 break
         
+        ploidy=len(genoData.alleles)
+
         if passed:
-            #if sample has passed the filters - try extract the geno info
-            try:
-                a1 = genoData.alleles[0]
-                a2 = genoData.alleles[1]
-                if not asNumbers:
-                    a1 = alleles[int(a1)]
-                    a2 = alleles[int(a2)]
-                phase = genoData.phase
-                if withPhase:
-                    output = a1+phase+a2
-                else:
-                    output = "".join(sorted([a1,a2]))
-            except:
-                pass
+            sampleAlleles = genoData.alleles
+            if not asNumbers:
+                alleles = [self.REF]+self.ALT
+                if allowOnly: alleles = [a if a in allowOnly else missing for a in alleles] 
+                try: sampleAlleles = [alleles[int(a)] for a in sampleAlleles]
+                except: sampleAlleles = [missing]*ploidy
         
-        return output
+        else: sampleAlleles = [missing]*ploidy
+        
+        if withPhase: return "/".join(sampleAlleles)
+        else: return "".join(sampleAlleles)
 
     
-    
-    def getGenotypes(self, gtFilters = [], asList = False, withPhase=True, asNumbers = False, samples = None):
+    def getGenotypes(self, gtFilters = [], asList = False, withPhase=True, asNumbers = False, samples = None, missing = None, allowOnly=None):
         if not samples: samples = self.sampleNames
         output = {}
         for sample in samples:
-            output[sample] = self.getGenotype(sample, gtFilters)
+            output[sample] = self.getGenotype(sample, gtFilters=gtFilters, withPhase=withPhase, asNumbers=asNumbers, missing=missing, allowOnly=allowOnly)
         
-        if asList:
-            return [output[sample] for sample in samples]
+        if asList: return [output[sample] for sample in samples]
         
         return output
     
@@ -111,7 +108,15 @@ class VcfSite:
             elif max([len(a) for a in self.ALT]) == 1: return "SNP"
             else: return "indel"
         else: return "indel"
-
+    
+    def getGenoField(self, field, samples = None, missing=None):
+        if missing is None: missing = "."
+        if samples is None: samples = self.sampleNames
+        fields = []
+        for sample in samples:
+            try: fields.append(getattr(self.genoData[sample], field))
+            except: fields.append(missing)
+        return fields
 
 class gtFilter:
     
@@ -233,6 +238,10 @@ if __name__ == "__main__":
 
     parser.add_argument("--skipIndels", help="Skip indels", action = "store_true")
     parser.add_argument("--skipMono", help="Skip monomorphic sites", action = "store_true")
+    
+    parser.add_argument("--field", help="Optional - format field to extract", action = "store")
+    parser.add_argument("--missing", help="Value to use for missing data", action = "store")
+    parser.add_argument("--outSep", help="Output separator", action = "store", default = "\t")
 
     args = parser.parse_args()
 
@@ -287,7 +296,7 @@ if __name__ == "__main__":
     skipIndels = args.skipIndels
     skipMono = args.skipMono
 
-    outSep = " "
+    outSep = args.outSep
     ##########################################################################################################################
 
     ### open files
@@ -316,10 +325,8 @@ if __name__ == "__main__":
     #check specified samples are in first file. Otherwise use this entire set
 
     if samples:
-        for sample in samples:
-            assert sample in vcf.sampleNames, "Specified sample name not in VCF header."
-    else:
-        samples = vcf.sampleNames
+        for sample in samples: assert sample in vcf.sampleNames, "Specified sample name not in VCF header."
+    else: samples = vcf.sampleNames
 
     ##########################################################################################################################
 
@@ -333,7 +340,7 @@ if __name__ == "__main__":
         if skipIndels and vcfSite.getType() is "indel": continue
         if skipMono and vcfSite.getType() is "mono": continue
         if minQual and canFloat(vcfSite.QUAL) and float(vcfSite.QUAL) < minQual: continue
-        genotypes = vcfSite.getGenotypes(gtFilters,asList=True,samples=samples)
-        #print >> sys.stderr, genotypes
-        Out.write(outSep.join([vcfSite.CHROM, str(vcfSite.POS)] + genotypes) + "\n")
+        if args.field is not None: output = vcfSite.getGenoField(args.field,samples=samples, missing=args.missing)
+        else: output = vcfSite.getGenotypes(gtFilters,asList=True,withPhase=True,samples=samples,missing=args.missing,allowOnly="ACGT")
+        Out.write(outSep.join([vcfSite.CHROM, str(vcfSite.POS)] + output) + "\n")
 
