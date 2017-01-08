@@ -11,7 +11,7 @@ class vcfGenoData:
         genoInfo = genoList
         for x in range(len(genoInfo)):
             setattr(self, genoInfoNames[x], genoInfo[x])
-        if self.hasattr("GT"):
+        if hasattr(self,"GT"):
             if len(self.GT) == 3:
                 self.phase = self.GT[1]
                 self.alleles = self.GT.split(self.phase)
