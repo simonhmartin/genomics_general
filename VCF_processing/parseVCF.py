@@ -21,7 +21,7 @@ class vcfGenoData:
             else: raise ValueError, "Error parsing genotype. Check genotype field."
     
     def getType(self):
-        if not self.hasattr("GT"): return None
+        if not hasattr(self,"GT"): return None
         elif len(self.alleles) == 1: return "Haploid"
         elif self.alleles[0] == self.alleles[1] == "0": return "HomRef"
         elif self.alleles[0] != self.alleles[1]: return "Het"
