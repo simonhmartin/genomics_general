@@ -19,22 +19,22 @@ from time import sleep
 '''A function that reads from the window queue, calls some other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using. This is the function that will run on each of the N cores.'''
 def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, minSites, stats):
-  while True:
-    windowNumber,window = windowQueue.get() # retrieve window
-    if windType == "coordinate" or windType == "predefined":
-        scaf,start,end,mid,sites = (window.scaffold, window.start, window.end, window.midPos(),window.seqLen())
-    else: scaf,start,end,mid,sites = (window.scaffold, window.firstPos(), window.lastPos(),window.midPos(),window.seqLen())
-    if sites >= minSites:
-        isGood = True
-        #make alignment object
-        Aln = genomics.genoToAlignment(window.seqDict(), sampleData, genoFormat = genoFormat)
-        statsDict = genomics.popDiv(Aln)
-        values = [round(statsDict[stat], 4) for stat in stats]
-    else:
-        isGood = False
-        values = [np.NaN]*len(stats)
-    resultString = ",".join([str(x) for x in [scaf,start,end,mid,sites] + values])
-    resultQueue.put((windowNumber, resultString, isGood))
+    while True:
+        windowNumber,window = windowQueue.get() # retrieve window
+        if windType == "coordinate" or windType == "predefined":
+            scaf,start,end,mid,sites = (window.scaffold, window.start, window.end, window.midPos(),window.seqLen())
+        else: scaf,start,end,mid,sites = (window.scaffold, window.firstPos(), window.lastPos(),window.midPos(),window.seqLen())
+        if sites >= minSites:
+            isGood = True
+            #make alignment object
+            Aln = genomics.genoToAlignment(window.seqDict(), sampleData, genoFormat = genoFormat)
+            statsDict = genomics.popDiv(Aln)
+            values = [round(statsDict[stat], 4) for stat in stats]
+        else:
+            isGood = False
+            values = [np.NaN]*len(stats)
+        resultString = ",".join([str(x) for x in [scaf,start,end,mid,sites] + values])
+        resultQueue.put((windowNumber, resultString, isGood))
 
 
 '''a function that watches the result queue and sorts results. This should be a generic funcion regardless of the result, as long as the first object is the result number, and this increases consecutively.'''
@@ -104,8 +104,8 @@ parser.add_argument("-p", "--population", help="Pop name and optionally sample n
 parser.add_argument("--popsFile", help="Optional file of sample names and populations", action = "store", required = False)
 parser.add_argument("--haploid", help="Samples that are haploid (comma separated)", action = "store", metavar = "sample names")
 
-parser.add_argument("-g", "--genoFile", help="Input genotypes file", required = True)
-parser.add_argument("-o", "--outFile", help="Results file", required = True)
+parser.add_argument("-g", "--genoFile", help="Input genotypes file", required = False)
+parser.add_argument("-o", "--outFile", help="Results file", required = False)
 parser.add_argument("--exclude", help="File of scaffolds to exclude", required = False)
 parser.add_argument("--include", help="File of scaffolds to analyse", required = False)
 parser.add_argument("-f", "--genoFormat", help="Format of genotypes in genotypes file", action='store', choices = ("phased","pairs","haplo","diplo"), required = True)
@@ -191,12 +191,11 @@ sampleData = genomics.SampleData(popNames = popNames, popInds = popInds, ploidyD
 
 #open files
 
-if genoFileName[-3:] == ".gz":
-  genoFile = gzip.open(genoFileName, "r")
-else:
-  genoFile = open(genoFileName, "r")
+if args.genoFile: genoFile = gzip.open(args.genoFile, "r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r")
+else: genoFile = sys.stdin
 
-outFile = open(outFileName, "w")
+if args.outFile: outFile = gzip.open(args.outFile, "w") if args.outFile.endswith(".gz") else open(args.outFile, "w")
+else: outFile = sys.stdout
 
 outFile.write("scaffold,start,end,mid,sites,")
 
