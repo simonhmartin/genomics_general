@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 #Various functions to parse and filter genotype data from vcf files.
 #If run independently it will pipe "genotypes" format to stdout. 
 

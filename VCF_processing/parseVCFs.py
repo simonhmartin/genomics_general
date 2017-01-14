@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import argparse, gzip, sys
 import parseVCF
 
@@ -42,10 +44,10 @@ def parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, 
     return outLines #and thats it. Move on to the next site in the genome
 
 
-def parseAndMergeWrapper(inQueue, outQueue, fileNames, headData, gtFilters, method, skipIndels, outSep):
+def parseAndMergeWrapper(inQueue, outQueue, fileNames, headData, gtFilters, method, skipIndels, missing, ploidy, outSep):
     while True:
         windowNumber,scaffold,start,end = inQueue.get() # retrieve window data
-        parsedLines = parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, skipIndels, outSep)
+        parsedLines = parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, skipIndels, missing, ploidy, outSep)
         outQueue.put((windowNumber, parsedLines,))
 
 
