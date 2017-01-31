@@ -58,7 +58,7 @@ class VcfSite:
             self.genoData[sampleName] = vcfGenoData(genoInfoNames, lineDict[sampleName].split(":"))
     
     
-    def getGenotype(self, sample, gtFilters = [], withPhase=True, asNumbers = False, missing = None, allowOnly=None):
+    def getGenotype(self, sample, gtFilters = [], withPhase=True, asNumbers = False, missing = None, allowOnly=None, keepPartial=False):
         genoData = self.genoData[sample]
         if missing is None:
             if asNumbers: missing = "."
@@ -83,17 +83,20 @@ class VcfSite:
             sampleAlleles = genoData.alleles
             if not asNumbers:
                 alleles = [self.REF]+self.ALT
-                if allowOnly: alleles = [a if a in allowOnly else missing for a in alleles] 
-                try: sampleAlleles = [alleles[int(a)] for a in sampleAlleles]
+                try:
+                    sampleAlleles = [alleles[int(a)] for a in sampleAlleles]
+                    if allowOnly: sampleAlleles = [a if a in allowOnly else missing for a in sampleAlleles]
+                    if not keepPartial: sampleAlleles = sampleAlleles if missing not in sampleAlleles else [missing]*ploidy
+                
                 except: sampleAlleles = [missing]*ploidy
         
         else: sampleAlleles = [missing]*ploidy
         
         if withPhase: return "/".join(sampleAlleles)
         else: return "".join(sampleAlleles)
-
     
-    def getGenotypes(self, gtFilters = [], asList = False, withPhase=True, asNumbers = False, samples = None, missing = None, allowOnly=None):
+    
+    def getGenotypes(self, gtFilters = [], asList = False, withPhase=True, asNumbers = False, samples = None, missing = None, allowOnly=None, keepPartial=False):
         if not samples: samples = self.sampleNames
         output = {}
         for sample in samples:
@@ -343,6 +346,6 @@ if __name__ == "__main__":
         if skipMono and vcfSite.getType() is "mono": continue
         if minQual and canFloat(vcfSite.QUAL) and float(vcfSite.QUAL) < minQual: continue
         if args.field is not None: output = vcfSite.getGenoField(args.field,samples=samples, missing=args.missing)
-        else: output = vcfSite.getGenotypes(gtFilters,asList=True,withPhase=True,samples=samples,missing=args.missing,allowOnly="ACGT")
+        else: output = vcfSite.getGenotypes(gtFilters,asList=True,withPhase=True,samples=samples,missing=args.missing,allowOnly="ACGT",keepPartial=False)
         Out.write(outSep.join([vcfSite.CHROM, str(vcfSite.POS)] + output) + "\n")
 

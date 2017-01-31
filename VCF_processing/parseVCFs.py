@@ -29,7 +29,7 @@ def parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, 
             if currentSites[x] and currentSites[x].POS == pos:
                 #get genotypes and add to output
                 if not skipIndels or currentSites[x].getType() is not "indel":
-                    genotypes = currentSites[x].getGenotypes(gtFilters,asList=True,withPhase=True,missing=missing,allowOnly="ACGT")
+                    genotypes = currentSites[x].getGenotypes(gtFilters,asList=True,withPhase=True,missing=missing,allowOnly="ACGT",keepPartial=False)
                     filesRepresented += 1
                 else: genotypes = ["/".join([missing]*ploidy)]*(len(headData[x].sampleNames))
                 try: currentSites[x] = sitesGenerators[x].next()
