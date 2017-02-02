@@ -98,29 +98,56 @@ class Genotype:
 
 #function takes gff file and retrieves coordinates of all CDSs for all mRNAs
 def parseGenes(gffLines):
-  output = {}
-  for gffLine in gffLines:
-    if len(gffLine) > 1 and gffLine[0] != "#":
-      gffObjects = gffLine.split()
-      #store all mRNA and CDS data for the particular scaffold
-      scaffold = gffObjects[0]
-      if scaffold not in output.keys():
-        output[scaffold] = {}
-      if gffObjects[2] == "mRNA":
-        #we've found a new mRNA
-        mRNA = gffObjects[-1].split(";")[0].split("=")[-1]
-        if mRNA not in output[scaffold].keys():
-          output[scaffold][mRNA] = {'start':int(gffObjects[3]), 'end':int(gffObjects[4]), 'strand':gffObjects[6], 'exons':0, 'cdsStarts':[], 'cdsEnds':[]}
-      elif gffObjects[2] == "CDS":
-        #we're reading CDSs for an existing mRNA
-        mRNA = gffObjects[-1].split(";")[0].split("=")[-1]
-        start = int(gffObjects[3])
-        end = int(gffObjects[4])
-        output[scaffold][mRNA]['exons'] += 1
-        output[scaffold][mRNA]['cdsStarts'].append(start)
-        output[scaffold][mRNA]['cdsEnds'].append(end)
-  return(output)
+    #little function to parse the info line
+    makeInfoDict = lambda infoString: dict([x.split("=") for x in infoString.split(";")])
+    output = {}
+    for gffLine in gffLines:
+        if len(gffLine) > 1 and gffLine[0] != "#":
+            gffObjects = gffLine.split()
+            #store all mRNA and CDS data for the particular scaffold
+            scaffold = gffObjects[0]
+            if scaffold not in output.keys():
+                output[scaffold] = {}
+            if gffObjects[2] == "mRNA":
+                #we've found a new mRNA
+                mRNA = makeInfoDict(gffObjects[-1])["ID"]
+                if mRNA not in output[scaffold].keys():
+                    output[scaffold][mRNA] = {'start':int(gffObjects[3]), 'end':int(gffObjects[4]), 'strand':gffObjects[6], 'exons':0, 'cdsStarts':[], 'cdsEnds':[]}
+            elif gffObjects[2] == "CDS":
+                #we're reading CDSs for an existing mRNA
+                mRNA = makeInfoDict(gffObjects[-1])["Parent"]
+                start = int(gffObjects[3])
+                end = int(gffObjects[4])
+                output[scaffold][mRNA]['exons'] += 1
+                output[scaffold][mRNA]['cdsStarts'].append(start)
+                output[scaffold][mRNA]['cdsEnds'].append(end)
+    return(output)
 
+
+#def parseGenes(gffLines):
+    ##little function to parse the info line
+    #output = {}
+    #for gffLine in gffLines:
+        #if len(gffLine) > 1 and gffLine[0] != "#":
+            #gffObjects = gffLine.split()
+            ##store all mRNA and CDS data for the particular scaffold
+            #scaffold = gffObjects[0]
+            #if scaffold not in output.keys():
+                #output[scaffold] = {}
+            #if gffObjects[2] == "mRNA":
+                ##we've found a new mRNA
+                #mRNA = gffObjects[-1].split(";")[0].split("=")[-1]
+                #if mRNA not in output[scaffold].keys():
+                    #output[scaffold][mRNA] = {'start':int(gffObjects[3]), 'end':int(gffObjects[4]), 'strand':gffObjects[6], 'exons':0, 'cdsStarts':[], 'cdsEnds':[]}
+            #elif gffObjects[2] == "CDS":
+                ##we're reading CDSs for an existing mRNA
+                #mRNA = gffObjects[-1].split(";")[0].split("=")[-1]
+                #start = int(gffObjects[3])
+                #end = int(gffObjects[4])
+                #output[scaffold][mRNA]['exons'] += 1
+                #output[scaffold][mRNA]['cdsStarts'].append(start)
+                #output[scaffold][mRNA]['cdsEnds'].append(end)
+    #return(output)
 
 
 #function to take raw genomic sequence, and the coordinates of exons, and export the concatenated CDS 
