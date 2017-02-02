@@ -99,7 +99,7 @@ class Genotype:
 #function takes gff file and retrieves coordinates of all CDSs for all mRNAs
 def parseGenes(gffLines):
     #little function to parse the info line
-    makeInfoDict = lambda infoString: dict([x.split("=") for x in infoString.split(";")])
+    makeInfoDict = lambda infoString: dict([x.split("=") for x in infoString.strip(";").split(";")])
     output = {}
     for gffLine in gffLines:
         if len(gffLine) > 1 and gffLine[0] != "#":
@@ -110,7 +110,10 @@ def parseGenes(gffLines):
                 output[scaffold] = {}
             if gffObjects[2] == "mRNA":
                 #we've found a new mRNA
-                mRNA = makeInfoDict(gffObjects[-1])["ID"]
+                try: mRNA = makeInfoDict(gffObjects[-1])["ID"]
+                except:
+                    print gffObjects[-1]
+                    raise ValueError("Problem parsing mRNA information.") 
                 if mRNA not in output[scaffold].keys():
                     output[scaffold][mRNA] = {'start':int(gffObjects[3]), 'end':int(gffObjects[4]), 'strand':gffObjects[6], 'exons':0, 'cdsStarts':[], 'cdsEnds':[]}
             elif gffObjects[2] == "CDS":
