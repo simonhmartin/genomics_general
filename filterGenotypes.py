@@ -270,7 +270,7 @@ if samples:
     for sample in samples:
         assert sample in allSamples, "Sample name not in header: " + sample
 elif args.pop and not args.keepAllSamples:
-    samples = sorted(list(set(popDict.values())))
+    samples = sorted(list(set([i for j in popDict.values() for i in j])))
 else: samples = allSamples
 
 for popName in popNames:
