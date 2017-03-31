@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import argparse, sys, gzip, random
 
 from multiprocessing import Process, Queue
@@ -126,10 +128,11 @@ parser.add_argument("-of", "--outputGenoFormat", help="Genotype format for outpu
 
 #specific samples
 parser.add_argument("-s", "--samples", help="sample names (separated by commas)", action='store')
-
 #populations
 parser.add_argument("-p", "--pop", help="Pop name and optionally sample names (separated by commas)", action='append', nargs="+", metavar=("popName","[samples]"))
 parser.add_argument("--popsFile", help="Optional file of sample names and populations", action = "store", required = False)
+parser.add_argument("--keepAllSamples", help="Keep all samples (not just specified populations)", action='store_true')
+
 #other
 parser.add_argument("--haploid", help="Samples that are haploid (comma separated)", action = "store", metavar = "sample names")
 
@@ -169,9 +172,7 @@ infile = args.infile
 outfile = args.outfile
 
 samples = args.samples
-
 if samples: samples = samples.split(",")
-
 
 include = []
 exclude = []
@@ -213,10 +214,13 @@ else:
     HWE_P = HWE_side = None
 
 popDict = {}
+popNames = []
 minPopCalls = None
 if args.pop:
     
-    for pop in args.pop: popDict[pop[0]] = [] if len(pop)==1 else pop[1].split(",")
+    for pop in args.pop:
+        popNames.append(pop[0])
+        popDict[pop[0]] = [] if len(pop)==1 else pop[1].split(",")
     
     if args.popsFile:
         with open(args.popsFile, "r") as pf: 
@@ -265,14 +269,15 @@ allSamples = headers[2:]
 if samples:
     for sample in samples:
         assert sample in allSamples, "Sample name not in header: " + sample
-else:
-    samples = allSamples
+elif args.pop and not args.keepAllSamples:
+    samples = sorted(list(set(popDict.values())))
+else: samples = allSamples
 
-Out.write("\t".join(headers[0:2] + samples) + "\n")
-
-for popName in popDict.keys():
+for popName in popNames:
     for sample in popDict[popName]:
         assert sample in samples, "Specified population includes an unrecognised sample: " + sample
+
+Out.write("\t".join(headers[0:2] + samples) + "\n")
 
 ploidyDict = dict(zip(allSamples,[2]*len(allSamples)))
 
