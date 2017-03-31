@@ -14,11 +14,12 @@ from time import sleep
 '''main worker function. This will watch the inQueue for pods, and pass lines from these pods to be parsed and filtered, before packaging back into a pod and sending on to the resultQueue'''
 def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,headers,include,exclude,samples,minCalls,minPopCalls,
                     minAlleles,maxAlleles,minVarCount,maxHet,minFreq,maxFreq,
-                    HWE_P,HWE_side,popDict,ploidyDict,fixed,skipChecks):
+                    HWE_P,HWE_side,popDict,ploidyDict,fixed,skipChecks,thinDist):
     while True:
         podNumber,inPod = inQueue.get()
         if verbose: print >> sys.stderr, "Pod", podNumber, "received for analysis."
         outPod = []
+        lastScaf = None
         for lineData in inPod:
             lineNumber,line = lineData
             #if verbose: print >> sys.stderr, "Analysing line", lineNumber
@@ -26,12 +27,21 @@ def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,headers,in
             if (include and objects[0] not in include) or (exclude and objects[0] in exclude): continue
             site = genomics.GenomeSite(genotypes=objects[2:], sampleNames=headers[2:], popDict=popDict,
                                        ploidyDict=ploidyDict, genoFormat=inputGenoFormat, skipChecks=skipChecks)
-            goodSite = genomics.siteTest(site,samples=samples,minCalls=minCalls,minPopCalls=minPopCalls,
-                                minAlleles=minAlleles,maxAlleles=maxAlleles,minVarCount=minVarCount,
-                                maxHet=maxHet,minFreq=minFreq,maxFreq=maxFreq,HWE_P=HWE_P,HWE_side=HWE_side,fixed=fixed)
+            goodSite = True
+            if thinDist:
+                pos = int(objects[1])
+                if lastScaf != objects[0]:
+                    lastPos = pos
+                    lastScaf = objects[0]
+                    goodSite = False
+                elif pos - lastPos < thinDist: goodSite = False
+            if goodSite: goodSite = genomics.siteTest(site,samples=samples,minCalls=minCalls,minPopCalls=minPopCalls,
+                                               minAlleles=minAlleles,maxAlleles=maxAlleles,minVarCount=minVarCount,
+                                               maxHet=maxHet,minFreq=minFreq,maxFreq=maxFreq,HWE_P=HWE_P,HWE_side=HWE_side,fixed=fixed)
             if goodSite:
-                outLine = "\t".join(objects[:2] + site.asList(samples, mode=outputGenoFormat)) + "\n"
+                outLine = "\t".join(objects[:2] + [str(g) for g in site.asList(samples, mode=outputGenoFormat)]) + "\n"
                 outPod.append((lineNumber,outLine))
+                if thinDist: lastPos = int(objects[1])
             #if verbose: print >> sys.stderr, objects[0], objects[1], "passed: ", goodSite
         outQueue.put((podNumber,outPod))
         if verbose: print >> sys.stderr, "Pod", podNumber, "analysed, sent to sorter."
@@ -111,14 +121,15 @@ parser.add_argument("-t", "--threads", help="Analysis threads", type=int, action
 parser.add_argument("--verbose", help="Verbose output.", action = "store_true")
 
 parser.add_argument("-if", "--inputGenoFormat", help="Genotype format [otherwise will be inferred (slower)]", action = "store",choices = ["phased","diplo","alleles"])
-parser.add_argument("-of", "--outputGenoFormat", help="Genotype format for output", action = "store", choices = ("phased","diplo","alleles"), default = "phased")
+parser.add_argument("-of", "--outputGenoFormat", help="Genotype format for output", action = "store", choices = ("phased","diplo","alleles","coded","count"), default = "phased")
 
 
 #specific samples
 parser.add_argument("-s", "--samples", help="sample names (separated by commas)", action='store')
 
 #populations
-parser.add_argument("-p", "--pop", help="Pop name and sample names (separated by commas)", action='append', nargs=2, metavar=("popName","samples"))
+parser.add_argument("-p", "--pop", help="Pop name and optionally sample names (separated by commas)", action='append', nargs="+", metavar=("popName","[samples]"))
+parser.add_argument("--popsFile", help="Optional file of sample names and populations", action = "store", required = False)
 #other
 parser.add_argument("--haploid", help="Samples that are haploid (comma separated)", action = "store", metavar = "sample names")
 
@@ -143,8 +154,10 @@ parser.add_argument("--HWE", help="Hardy-Weinberg equalibrium test P-value and s
 parser.add_argument("--minPopCalls", help="Minimum number of good genotype calls per pop (comma separated)", action = "store", metavar = "integer")
 parser.add_argument("--fixedDiffs", help="Only variants where differences are fixed between pops", action = "store_true")
 
-parser.add_argument("--skipChecks", help="Skip genotype checks to speed things up", action = "store_true")
+#minimum distance for thinning
+parser.add_argument("--thinDist", help="Allowed distance between sites for thinning", type=int, action = "store", metavar = "integer")
 
+parser.add_argument("--skipChecks", help="Skip genotype checks to speed things up", action = "store_true")
 parser.add_argument("--podSize", help="Lines to analyse in each thread simultaneously", type=int, action = "store", default = 100000)
 
 
@@ -202,9 +215,16 @@ else:
 popDict = {}
 minPopCalls = None
 if args.pop:
-    for pop in args.pop:
-        popDict[pop[0]] = pop[1].split(",")
-
+    
+    for pop in args.pop: popDict[pop[0]] = [] if len(pop)==1 else pop[1].split(",")
+    
+    if args.popsFile:
+        with open(args.popsFile, "r") as pf: 
+            for line in pf:
+                ind,pop = line.split()
+                if pop not in popDict: popDict[pop] = [ind]
+                elif ind not in popDict[pop]: popDict[pop].append(ind)
+    
     if args.minPopCalls: minPopCalls = dict(zip([pop[0] for pop in args.pop],
                                                 [int(i) for i in args.minPopCalls.split(",")]))
 
@@ -252,7 +272,7 @@ Out.write("\t".join(headers[0:2] + samples) + "\n")
 
 for popName in popDict.keys():
     for sample in popDict[popName]:
-        assert sample in samples, "Specified population includes an unexpected sample: " + sample
+        assert sample in samples, "Specified population includes an unrecognised sample: " + sample
 
 ploidyDict = dict(zip(allSamples,[2]*len(allSamples)))
 
@@ -286,7 +306,7 @@ This one reads from the pod queue, passes each line some analysis function(s), g
 for x in range(nProcs):
     worker = Process(target=analysisWrapper,args=(inQueue,doneQueue,args.inputGenoFormat,args.outputGenoFormat,headers,include,exclude,samples,minCalls,minPopCalls,
                     minAlleles,maxAlleles,minVarCount,maxHet,minFreq,maxFreq,
-                    HWE_P,HWE_side,popDict,ploidyDict,fixed,args.skipChecks,))
+                    HWE_P,HWE_side,popDict,ploidyDict,fixed,args.skipChecks,args.thinDist,))
     worker.daemon = True
     worker.start()
 
