@@ -275,7 +275,7 @@ else: samples = allSamples
 
 for popName in popNames:
     for sample in popDict[popName]:
-        assert sample in samples, "Specified population includes an unrecognised sample: " + sample
+        assert sample in allSamples, "Sample name not in header: " + sample
 
 Out.write("\t".join(headers[0:2] + samples) + "\n")
 
