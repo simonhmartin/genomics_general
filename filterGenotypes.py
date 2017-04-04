@@ -226,8 +226,7 @@ if args.pop:
         with open(args.popsFile, "r") as pf: 
             for line in pf:
                 ind,pop = line.split()
-                if pop not in popDict: popDict[pop] = [ind]
-                elif ind not in popDict[pop]: popDict[pop].append(ind)
+                if pop in popDict and ind not in popDict[pop]: popDict[pop].append(ind)
     
     if args.minPopCalls: minPopCalls = dict(zip([pop[0] for pop in args.pop],
                                                 [int(i) for i in args.minPopCalls.split(",")]))
