@@ -3,7 +3,7 @@
 import numpy as np
 import math
 from copy import deepcopy
-from string import maketrans
+import string
 import time
 import itertools
 
@@ -25,75 +25,136 @@ def diplo(pair): return haploDiploDict[pair]
 
 def homo(diplo): return diploHomoDict[diplo]
 
-numSeqDict = {"A":0,"C":1,"G":2,"T":3,"N":np.NaN}
+seqNumDict = {"A":0,"C":1,"G":2,"T":3,"N":-999}
+
+numSeqDict = {0:"A",1:"C",2:"G",3:"T",-999:"N"}
+
+
+def seqArrayToNumArray(seqArray):
+    numArray = np.empty(shape = seqArray.shape, dtype=int)
+    for x in ["A","C","G","T","N"]: numArray[seqArray==x] = seqNumDict[x]
+    return numArray
+
+def numArrayToSeqArray(numArray):
+    seqArray = np.empty(shape = numArray.shape, dtype=str)
+    for x in [0,1,2,3,-999]: seqArray[numArray==x] = numSeqDict[x]
+    return seqArray
+
+
+#class Genotype:
+    #def __init__(self, geno, haploid = False, genoFormat=None, skipChecks = False):
+        #if genoFormat is None:
+            #l = len(geno)
+            #if l == 1: genoFormat = "diplo"
+            #elif l == 2: genoFormat = "paired"
+            #elif l == 3: genoFormat = "phased"
+        #if not skipChecks:
+            #if genoFormat == "phased":
+                #assert geno[1] in ["|","/"] and "".join(sorted(geno.split(geno[1]))) in PAIRS, "Unrecognised Genotype"
+                #self.alleles = [geno[0],geno[2]]
+                #self.phase = geno[1]
+            #elif genoFormat == "diplo":
+                #assert geno in DIPLOTYPES, "Unrecognised Genotype"
+                #self.alleles = list(haplo(geno))
+                #self.phase = "/"
+            #elif genoFormat == "paired":
+                #assert "".join(sorted(geno)) in PAIRS, "Unrecognised Genotype"
+                #self.alleles = list(geno)
+                #self.phase = "/"
+            #else: raise ValueError("Invalid genotype format")
+        
+        #elif genoFormat == "phased":
+            #self.alleles = [geno[0],geno[2]]
+            #self.phase = geno[1]
+        #elif genoFormat == "diplo":
+            #self.alleles = list(haplo(geno))
+            #self.phase = "/"
+        #elif genoFormat == "paired":
+            #self.alleles = list(geno)
+            #self.phase = "/"
+        #else:
+            #raise ValueError("Invalid genotype format")
+        
+        #self.numAlleles = [seqNumDict[a] for a in self.alleles]
+        
+        #if haploid:
+            #assert self.alleles[0] == self.alleles[1], "Biallelic genotype cannot be assigned as haploid"
+            #self.alleles = self.alleles[:1]
+            #self.phase = None
+            #self.ploidy = 1
+        #else:
+            #self.ploidy = 2
+        
+    #def isHaploid(self): return self.ploidy == 1
+    
+    #def asPhased(self):
+        #if self.isHaploid(): return self.alleles
+        #else: return self.phase.join(self.alleles)
+    
+    #def asDiplo(self):
+        #if self.isHaploid(): return self.alleles[0]
+        #else: return diplo("".join(sorted(self.alleles)))
+    
+    #def asCoded(self, codeDict, missing = None): #code alleles e.g. 0 and 1, with phase (0/1)
+        #if missing is None: missing = "."
+        #if self.isHaploid():
+            #try: return codeDict[self.alleles[0]]
+            #except: return missing
+        #else:
+            #try: return self.phase.join([codeDict[a] for a in self.alleles])
+            #except: return missing + self.phase + missing
+    
+    #def asCount(self, countAllele, missing = None): # code whole genotype as single value
+        #if missing is None: missing = 9
+        #try: return np.bincount(self.numAlleles, minlength = 4)[seqNumDict[countAllele]]
+        #except: return missing
 
 class Genotype:
-    def __init__(self, geno, haploid = False, genoFormat=None, skipChecks = False):
-        if genoFormat is None:
-            l = len(geno)
-            if l == 1: genoFormat = "diplo"
-            elif l == 2: genoFormat = "paired"
-            elif l == 3: genoFormat = "phased"
-        if not skipChecks:
-            if genoFormat == "phased":
-                assert geno[1] in ["|","/"] and "".join(sorted(geno.split(geno[1]))) in PAIRS, "Unrecognised Genotype"
-                self.alleles = [geno[0],geno[2]]
-                self.phase = geno[1]
-            elif genoFormat == "diplo":
-                assert geno in DIPLOTYPES, "Unrecognised Genotype"
-                self.alleles = list(haplo(geno))
-                self.phase = "/"
-            elif genoFormat == "paired":
-                assert "".join(sorted(geno)) in PAIRS, "Unrecognised Genotype"
-                self.alleles = list(geno)
-                self.phase = "/"
-            else: raise ValueError("Invalid genotype format")
-        
-        elif genoFormat == "phased":
-            self.alleles = [geno[0],geno[2]]
+    def __init__(self, geno, genoFormat, ploidy = None, forcePloidy=False):
+        if genoFormat == "phased":
+            self.alleles = list(geno)[::2]
             self.phase = geno[1]
+        elif genoFormat == "alleles" or genoFormat == "pairs" or genoFormat == "haplo":
+            self.alleles = list(geno)
+            self.phase = ["/"]
         elif genoFormat == "diplo":
             self.alleles = list(haplo(geno))
             self.phase = "/"
-        elif genoFormat == "paired":
-            self.alleles = list(geno)
-            self.phase = "/"
         else:
-            raise ValueError("Invalid genotype format")
+            raise ValueError("Valid genotype formats are 'phased' (eg A/T), 'alleles' (eg AT), 'pairs' (eg AT), 'haplo' (eg A) or 'diplo' (eg W)")
         
-        self.numAlleles = [numSeqDict[a] for a in self.alleles]
+        if ploidy is not None:
+            ploidyError = ploidy - len(self.alleles)
+            if forcePloidy:
+                if ploidyError > 0: self.alleles += ["N"]*ploidyError
+                elif ploidyError < 0: self.alleles = ["N"]*ploidy
+            else: raise ValueError("Ploidy doesn't match number of alleles")
+        else: ploidy = len(self.alleles)
         
-        if haploid:
-            assert self.alleles[0] == self.alleles[1], "Biallelic genotype cannot be assigned as haploid"
-            self.alleles = self.alleles[:1]
-            self.phase = None
-            self.ploidy = 1
-        else:
-            self.ploidy = 2
+        self.ploidy = ploidy
         
+        try: self.numAlleles = np.array([seqNumDict[a] for a in self.alleles])
+        except: self.numAlleles = np.array([-999]*self.ploidy)
+    
     def isHaploid(self): return self.ploidy == 1
     
-    def asPhased(self):
-        if self.isHaploid(): return self.alleles
-        else: return self.phase.join(self.alleles)
+    def asPhased(self): return self.phase.join(self.alleles)
     
     def asDiplo(self):
-        if self.isHaploid(): return self.alleles[0]
-        else: return diplo("".join(sorted(self.alleles)))
+        assert self.ploidy == 2, "Can only convert diploid genotypes to diplotypes."
+        return diplo("".join(sorted(self.alleles)))
     
     def asCoded(self, codeDict, missing = None): #code alleles e.g. 0 and 1, with phase (0/1)
         if missing is None: missing = "."
-        if self.isHaploid():
-            try: return codeDict[self.alleles[0]]
-            except: return missing
-        else:
-            try: return self.phase.join([codeDict[a] for a in self.alleles])
-            except: return missing + self.phase + missing
+        try: return self.phase.join([codeDict[a] for a in self.alleles])
+        except: return self.phase.join([missing]*self.ploidy)
     
     def asCount(self, countAllele, missing = None): # code whole genotype as single value
-        if missing is None: missing = 9
-        try: return np.bincount(self.numAlleles, minlength = 4)[numSeqDict[countAllele]]
+        if missing is None: missing = -1
+        try: return np.bincount(self.numAlleles, minlength = 4)[seqNumDict[countAllele]]
         except: return missing
+    
+    def isMissing(self): return np.any(self.numAlleles==-999)
 
 
 #function takes gff file and retrieves coordinates of all CDSs for all mRNAs
@@ -131,7 +192,7 @@ def parseGenes(gffLines):
 #translation table for bases
 intab = "ACGTKMRYN"
 outtab = "TGCAMKYRN"
-trantab = maketrans(intab, outtab)
+trantab = string.maketrans(intab, outtab)
 
 
 #function to extract a CDS sequence from a genomic sequence given the exon starts, ands and strand
@@ -172,7 +233,7 @@ def countStops(cds, includeTerminal=False):
 
 
 #convert one ambiguous sequence into two haploid pseudoPhased sequences
-
+##NOTE this is depricated and should be replaced by splitSeq()
 def pseudoPhase(sequence, genoFormat = "diplo"):
     if genoFormat == "pairs": return [[g[0] for g in sequence], [g[1] for g in sequence]]
     elif genoFormat == "phased": return [[g[0] for g in sequence], [g[2] for g in sequence]]
@@ -181,8 +242,16 @@ def pseudoPhase(sequence, genoFormat = "diplo"):
         return [[p[0] for p in pairs], [p[1] for p in pairs]]
 
 
-#convert a sequence of phased genotypes into two separate sequences
+def splitSeq(sequence, genoFormat = "phased"):
+    assert genoFormat in ["haplo", "diplo", "pairs", "alleles", "phased"]
+    if genoFormat == "diplo": sequence = [haplo(d) for d in sequence]
+    split = zip(*sequence) 
+    #remove phase splitters
+    if genoFormat == "phased": split = split[::2]
+    return split
 
+#convert a sequence of phased genotypes into two separate sequences
+##NOTE this is depricated and should be replaced by splitSeq()
 def parsePhase(genotypes):
   first = [geno[0] for geno in genotypes]
   second = [geno[2] for geno in genotypes]
@@ -204,7 +273,7 @@ def forceHomo(sequence):
 class GenomeSite:
     
     def __init__(self, genoDict = None, genotypes = None, sampleNames = None, contig = None, position = 0, popDict = {},
-                 genoFormat = None, ploidyDict = None, skipChecks = False):
+                 genoFormat = None, ploidyDict = None, forcePloidy=False):
         #genotypes is a list of genotypes as strings, lists or tuples in any format. e.g. ['AT', 'W', 'T|A', ('A','T)]
         #or use genoDict, which is a dictionary with sample names as the keys. Again, all genotype formats accepted
         if not genoDict:
@@ -218,16 +287,12 @@ class GenomeSite:
         self.contig = contig
         self.position = position
         self.pops = popDict
-        if ploidyDict:
-            self.ploidy = ploidyDict
-        else:
-            self.ploidy = {}
-            for sample in self.sampleNames:
-                self.ploidy[sample] = 2
+        self.ploidy = ploidyDict if ploidyDict else dict(zip(sampleNames, [None]*len(sampleNames)))
+        
         self.genotypes = {}
         for sample in self.sampleNames:
-            self.genotypes[sample] = Genotype(genoDict[sample], haploid = self.ploidy[sample] == 1,
-                                              genoFormat=genoFormat, skipChecks = skipChecks)
+            self.genotypes[sample] = Genotype(genoDict[sample], genoFormat=genoFormat,
+                                              ploidy = self.ploidy[sample],forcePloidy=forcePloidy)
     
     def asList(self, samples = None, pop = None, mode = "phased", alleles = None, codeDict=None, missing=None):
         if pop: samples = self.pops[pop]
@@ -261,18 +326,21 @@ class GenomeSite:
     
     def nsamp(self): return len(self.sampleNames)
     
-    def changeGeno(self, sample, newGeno):
-        self.genotypes[sample] = Genotype(newGeno, haploid = self.ploidy[sample] == 1)
+    def changeGeno(self, sample, newGeno, genoFormat="phased"):
+        self.genotypes[sample] = Genotype(newGeno, genoFormat=genoFormat,
+                                          ploidy = self.ploidy[sample],forcePloidy=forcePloidy)
     
     def hets(self, samples=None):
         if not samples: samples = self.sampleNames
         sampAlleles = self.asList(mode = "alleles")
         sampUniqueAlleles = map(set, sampAlleles)
         nSampAlleles = np.array(map(len, sampUniqueAlleles))
-        return 1.*sum(nSampAlleles == 2)/self.nNonN()
+        return 1.*sum(nSampAlleles == 2)/self.nonMissing()
     
-    def nNonN(self):
-        return len([d for d in self.asList(mode="diplo") if d != "N"])
+    def nonMissing(self, prop=False):
+        present = sum([~self.genotypes[sample].isMissing() for sample in self.sampleNames])
+        if prop: return 1.*present/(len(sampleNames))
+        else: return present
     
     #def plug(self):
     ## plug the major allele in place of missing data
@@ -285,15 +353,6 @@ class GenomeSite:
         #for sample in popDict[popName]:
             #if site.genotypes[sample].asDiplo() == "N":
                 #site.changeGeno(sample, random.sample(popMajor,1)[0])
-
-
-def hets(genotypes):
-    #genotypes is a list of genotypes as strings, lists or tuples in any format. e.g. ['AT', 'W', 'T|A', ('A','T)]
-    site = Site(genotypes = genotypes)
-    sampAlleles = site.asList(mode = "alleles")
-    sampUniqueAlleles = map(set, sampAlleles)
-    nSampAlleles = np.array(map(len, sampUniqueAlleles))
-    return 1.*sum(nSampAlleles == 2)/site.nNonN()
 
 
 def baseFreqs(bases, asCounts = False, asDict = False):
@@ -383,10 +442,9 @@ def inHWE(genotypes, P_value, side = "both", verbose = False):
 
 def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAlleles=float("inf"),minVarCount=None,maxHet=None,minFreq=None,maxFreq=None,HWE_P=None,HWE_side="both",fixed=False):
     if not samples: samples = site.sampleNames
-    diplos = [d for d in site.asList(mode = "diplo", samples=samples) if d != "N"]
     #check sufficient number of non-N calls
-    if len(diplos) < minCalls: return False
-    bases = [base for base in site.asList(mode = "bases", samples=samples)]
+    if site.nonMissing() < minCalls: return False
+    bases = site.asList(mode = "bases", samples=samples)
     baseCounts = baseFreqs(bases, asCounts = True)
     #check min and max alleles 
     nAlleles = len(set(site.alleles(samples)))
@@ -405,9 +463,9 @@ def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAllel
             #if there are defined pops, check all of them
             if site.pops is not {}:
                 for popName in site.pops.keys():
-                    if not inHWE(site.asList(pop = popName), HWE_P, side = HWE_side): return False
+                    if not inHWE(site.asList(pop = popName,mode="diplo"), HWE_P, side = HWE_side): return False
             #otherwise just check all samples
-            elif not inHWE(diplos, HWE_P, side = HWE_side): return False
+            elif not inHWE(site.asList(mode="diplo"), HWE_P, side = HWE_side): return False
     
     #if there are population-specific filters
     popNames = site.pops.keys()
@@ -449,29 +507,43 @@ def makeList(thing):
 
 
 class Alignment:
-    def __init__(self, sequences = None, names=None, groups = None, groupIndDict=None, length = None, numArray = None):
-        assert sequences is not None or length is not None, "Specify either sequences or length of empty sequence object."
+    def __init__(self, sequences = None, names=None, groups = None, groupIndDict=None, length = None, numArray = None, positions=None, sampleNames=None):
+        assert not sequences is numArray is length is None, "Specify sequences or length of empty sequence object."
         if sequences is not None:
             assert isinstance(sequences, (list,tuple,np.ndarray)), "Sequences must be a list, tuple or numpy array."
-            if isinstance(sequences, np.ndarray): self.array = sequences
-            else: self.array = np.array([list(seq) for seq in sequences])
-        else:
-            self.array = np.empty((0,length))
-            self.numArray = np.empty((0,length))
+            if isinstance(sequences, np.ndarray): seqArray = sequences
+            else: seqArray = np.array([list(seq) for seq in sequences])
+            
+            if numArray is not None: assert numArray.shape == sequences.shape, "Numeric array is different shape from sequence array."
+            else: numArray = seqArrayToNumArray(seqArray)
         
-        if numArray is not None:
-            assert numArray.shape == sequences.shape, "Numeric array is different shape from sequence array."
-            self.numArray = numArray
+        elif numArray is not None:
+            assert isinstance(numArray, np.ndarray), "Numeric sequences must be a numpy array."
+            seqArray = numArrayToSeqArray(numArray)
+        
         else:
-            self.numArray = np.array([[numSeqDict[b] for b in seq] for seq in sequences])
+            seqArray = np.empty(shape=(0,length), dtype=str)
+            numArray = np.empty((0,length), dtype=int)
+        
+        self.array = seqArray
+        self.numArray = numArray
          
-        self.nanMask = ~np.isnan(self.numArray)
+        self.nanMask = self.numArray>=0
         
         self.N,self.l = self.array.shape
+        
+        if positions is not None:
+            assert len(positions)==self.l, "Positions must match sequence length."
+            self.positions = positions
+        else: self.positions = range(1,self.l+1)
         
         if names is None: names = np.arange(self.N)
         else: assert len(names) == self.N, "Incorrect number of names."
         self.names = np.array(names)
+        
+        if sampleNames is None: sampleNames = self.names
+        else: assert len(sampleNames) == self.N, "Incorrect number of sample names."
+        self.sampleNames = sampleNames
         
         if groups is not None:
             assert len(groups) == self.N, "Incorrect number of groups."
@@ -498,7 +570,16 @@ class Alignment:
         indices = np.unique(indices)
         return Alignment(sequences = self.array[indices], numArray=self.numArray[indices],
                         names=self.names[indices], groups=self.groups[indices])
-    
+
+    def slice(self, indices = None, startPos = None, endPos = None):
+        if indices is None:
+            if startPos is None: startPos = min(self.positions)
+            if endPos is None: endPos = max(self.positions)
+            indices = [x for x in range(self.l) if startPos<=self.positions[x]<=endPos]
+        
+        return Alignment(sequences = self.array[:,indices], names = self.names, groups=self.groups,
+                         numArray=self.numArray[:,indices], positions=[self.positions[i] for i in indices])
+            
     def column(self,x): return self.array[:,x]
     
     def numColumn(self,x): return self.numArray[:,x]
@@ -507,43 +588,57 @@ class Alignment:
         distMat = np.zeros((self.N,self.N))
         for i in range(self.N - 1):
             for j in range(i + 1, self.N):
-                distMat[i,j] = distMat[j,i] = numHamming(self.numArray[i,:], self.numArray[j,:])
+                nanMask = self.nanMask[i,:] & self.nanMask[j,:]
+                distMat[i,j] = distMat[j,i] = numHamming(self.numArray[i,:][nanMask], self.numArray[j,:][nanMask])
         return distMat
     
-    def varSites(self): return np.where([np.unique(self.numArray[:,x][self.nanMask[:,x]]) > 1 for x in xrange(self.l)])[0]
+    def varSites(self): return np.where([len(np.unique(self.numArray[:,x][self.nanMask[:,x]])) > 1 for x in xrange(self.l)])[0]
     
     def biSites(self): return np.where([len(np.unique(self.numArray[:,x][self.nanMask[:,x]])) == 2 for x in xrange(self.l)])[0]
     
     def siteNonNan(self, sites=None, prop = False):
         if sites is None: sites = range(self.l)
         else: sites = makeList(sites)
-        if prop: return np.array([1.*sum(self.nanMask[:,x])/self.N for x in sites])
-        return np.array([sum(self.nanMask[:,x]) for x in sites])
+        if prop: return np.mean(self.nanMask[:,sites], axis=0)
+        return np.sum(self.nanMask[:,sites], axis=0)
+
+    def seqNonNan(self, prop = False):
+        if prop: return np.mean(self.nanMask, axis=1)
+        return np.sum(self.nanMask, axis=1)
     
-    def siteFreqs(self, sites=None):
+    def siteFreqs(self, sites=None, asCounts=False):
         if sites is None: sites = range(self.l)
         else: sites = makeList(sites)
-        return np.array([binBaseFreqs(self.numArray[:,x][self.nanMask[:,x]].astype(int)) for x in sites])
+        return np.array([binBaseFreqs(self.numArray[:,x][self.nanMask[:,x]], asCounts=asCounts) for x in sites])
+    
 
 
-def genoToAlignment(seqs, sampleData, genoFormat = "diplo"):
+def genoToAlignment(seqDict, sampleData=None, genoFormat = "diplo"):
+    if sampleData is None: sampleData = SampleData()
     seqNames = []
+    sampleNames = []
     groups = []
-    pseudoPhasedSeqs = []
-    #first pseudo phase all seqs
-    for indName in seqs.keys():
-        if sampleData.ploidy[indName] == 2:
-            pseudoPhasedSeqs += pseudoPhase(seqs[indName], genoFormat)
-            seqNames += [indName + "A", indName + "B"]
-            groups += [sampleData.getPop(indName)]*2
+    haploidSeqs = []
+    #first pseudo phase all seqs if necessary
+    for indName in seqDict.keys():
+        seqList = splitSeq(seqDict[indName], genoFormat)
+        ploidy = sampleData.ploidy[indName] if indName in sampleData.ploidy else len(seqList)
+        if ploidy is not None: assert len(seqList) == ploidy, "Sample ploidy doesn't match genotype"
+        if ploidy != 1:
+            haploidSeqs += seqList
+            seqNames += [indName + "_" + letter for letter in string.ascii_uppercase[:ploidy]]
+            sampleNames += [indName]*ploidy
+            groups += [sampleData.getPop(indName)]*ploidy
         else:
-            pseudoPhasedSeqs.append(forceHomo(seqs[indName]))
+            haploidSeqs.append(forceHomo(seqList[0]))
             seqNames.append(indName)
+            sampleNames.append(indName)
             groups.append(sampleData.getPop(indName))
-    order = [seqNames.index(s) for s in sorted(seqNames)]
-    return Alignment(sequences=[pseudoPhasedSeqs[i] for i in order],
+    order = np.argsort(seqNames)
+    return Alignment(sequences=[haploidSeqs[i] for i in order],
                      names =   [seqNames[i] for i in order],
-                     groups=   [groups[i] for i in order])
+                     groups=   [groups[i] for i in order],
+                     sampleNames= [sampleNames[i] for i in order])
 
 
 
@@ -571,6 +666,73 @@ def minorAllele(bases):
     else: return np.nan
 
 
+def LD(basesA, basesB, ancA=None, ancB=None):
+    arr = np.column_stack([basesA,basesB])
+    nanMask = arr >= 0
+    goodRows = np.where(np.apply_along_axis(np.all, 1, nanMask))[0]
+    arr = arr[goodRows,:]
+    N=arr.shape[0]
+    allelesA, countsA = np.unique(arr[:,0], return_counts = True)
+    allelesB, countsB = np.unique(arr[:,1], return_counts = True)
+    if not len(allelesA) == len(allelesB) == 2: return {"D":np.NaN, "Dprime": np.NaN, "r":np.NaN, "r2":np.NaN}
+    
+    if ancA is None: ancA = allelesA[countsA==max(countsA)][0]
+    else: assert ancA in allelesA, "ancestral allele not present"
+    
+    if ancB is None: ancB = allelesB[countsB==max(countsB)][0]
+    else: assert ancB in allelesB, "ancestral allele not present"
+    
+    boolArr = arr != [ancA,ancB]
+    
+    pA,pB = np.mean(boolArr, axis = 0)
+    pAB = np.mean(np.apply_along_axis(np.all, 1, boolArr))
+    
+    D = pAB - pA*pB
+    Dmin = max([-pA*pB, -(1-pA)*(1-pB)]) if D <0 else min([pA*(1-pB), (1-pA)*pB])
+    Dprime = D/Dmin
+    r = D / np.sqrt(pA*(1-pA)*pB*(1-pB))
+    return {"D":D, "Dprime": Dprime, "r":r, "r2":r**2}
+
+
+def maxLDphase(aln, sampleIndices=None, stat = "r2"):
+    if sampleIndices is None:
+        sampleNames = np.array(aln.sampleNames)
+        sampleIndices = [[0]]
+        namesFound = [sampleNames[0]]
+        for i in range(1,len(sampleNames)):
+            if sampleNames[i] == namesFound[-1]: sampleIndices[-1].append(i)
+            else:
+                namesFound.append(sampleNames[i])
+                sampleIndices.append([i])
+    
+    assert aln.N == sum([len(ind) for ind in sampleIndices]), "Mistmatch between number of indices and sequences"
+    
+    assert len(aln.biSites()) == len(aln.varSites()), "Only biallelic or invariant sites are permitted"
+    
+    nHets = np.array([sum([len(np.unique(aln.numArray[ind,x][aln.nanMask[ind,x]]))>1 for ind in sampleIndices]) for x in range(aln.l)])
+    sitesToDo = np.argsort(nHets)[::-1]
+    sitesToDo = sitesToDo[nHets[sitesToDo] >= 1]
+    
+    newNumArray = aln.numArray.copy()
+    
+    #only do the maximization if there are 2 or more sites with hets
+    if len(sitesToDo) >=2:
+        #first set the configuration for the first site
+        first = sitesToDo[0]
+        newNumArray[:,first] = list(itertools.chain(*[sorted(newNumArray[ind, first]) for ind in sampleIndices]))
+        newNumArray[:,first] = list(itertools.chain(*[sorted(newNumArray[ind, first]) for ind in sampleIndices]))
+        
+        for x in range(1,len(sitesToDo)):
+            option1 = list(itertools.chain(*[sorted(newNumArray[ind, sitesToDo[x]]) for ind in sampleIndices]))
+            option2 = list(itertools.chain(*[sorted(newNumArray[ind, sitesToDo[x]])[::-1] for ind in sampleIndices]))
+            LD1 = np.mean([LD(newNumArray[:,sitesToDo[y]],option1)[stat] for y in range(x)])
+            LD2 = np.mean([LD(newNumArray[:,sitesToDo[y]],option2)[stat] for y in range(x)])
+            newNumArray[:,sitesToDo[x]] = option1 if LD1 >= LD2 else option2
+    
+    return Alignment(numArray=newNumArray,names=aln.names,groups=aln.groups,
+                     positions=aln.positions, sampleNames = aln.sampleNames)
+
+
 
 #an older version of sequence distance - using text as opposed to my newer method using numerical arrays
 #def seqDistance(seqA, seqB, proportion = True):
@@ -595,17 +757,18 @@ def minorAllele(bases):
 
 def numHamming(numArrayA, numArrayB):
     dif = numArrayA - numArrayB
-    return np.nanmean(dif[~np.isnan(dif)] != 0)
+    return np.mean(dif != 0)
 
 
 def distMatrix(sequences):
-    numSeqs = [[numSeqDict[b] for b in seq] for seq in seqs]
+    numSeqs = [[seqNumDict[b] for b in seq] for seq in seqs]
     DNAarray = np.array(numSeqs)
     N,ln = DNAarray.shape
     distMat = np.zeros((N,N))
     for i in range(N - 1):
         for j in range(i + 1, N):
-            distMat[i,j] = distMat[j,i] = numHamming(DNAarray[i,:], DNAarray[j,:])
+            nanMask = self.nanMask[i,:] & self.nanMask[j,:]
+            distMat[i,j] = distMat[j,i] = numHamming(self.numArray[i,:][nanMask], self.numArray[j,:][nanMask])
     return distMat
 
 
@@ -740,6 +903,7 @@ def popSiteFreqs(aln, minData = 0):
         popDataMask = [propData > minData for propData in popPropData]
         for x in range(len(pops)): _popSiteFreqs[x][~popDataMask[x],:] = np.array([np.nan]*4)
     return _popSiteFreqs
+
 
 ################################################################################################
 
@@ -1040,7 +1204,7 @@ class SimpleWindow:
         else:
             self.seqs = np.array(seqs)
             assert len(self.names) == self.seqs.shape[0], "Number of names and sequences must match"
-        if positions is None: self.positions = range(1,self.seqs.shape[1]+1)
+        if positions is None: self.positions = [0]*self.seqs.shape[1]
         else:
             assert seqs.shape[1] == len(positions), "Positions must match sequence length"
             self.positions = positions
@@ -1060,8 +1224,7 @@ class SimpleWindow:
         GTs = np.array(GTs)
         GTs = GTs.reshape((GTs.shape[0],1))
         self.seqs = np.append(self.seqs, GTs, axis = 1)
-        if position is not None: self.positions.append(position)
-        else: self.positions.append(self.positions[-1]+1)
+        self.positions.append(position if position is not None else 0)
     
     def seqLen(self): return self.seqs.shape[1]
     
