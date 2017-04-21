@@ -13,34 +13,46 @@ from time import sleep
 ####################################################################################################################################
 
 #command that actually runs phyml and gets the bestTree 
-def phymlTree(seqBlock, indNames, model, opt, phyml, prefix = "", tmpDir = None, test = False, log="/dev/null"):
+def phymlTree(seqArray, seqNames, model, opt, phyml, prefix = "", tmpDir = None, test = False, log="/dev/null"):
     #write file
     tempAln = tempfile.NamedTemporaryFile(mode="w",prefix=prefix,suffix=".phy",dir=tmpDir,delete=False)
-    with tempAln as tA: tA.write(genomics.makeAlnString(indNames,seqBlock))
+    with tempAln as tA: tA.write(genomics.makeAlnString(seqNames,seqArray))
     phymlCommand = " ".join([phyml,"--input", tempAln.name,"--model", model, "-o", opt, "-b 0", ">>", log])
     if test: print >> sys.stderr, "phyml command:\n", phymlCommand
     os.system(phymlCommand)
     #try retrieve the result  
     try:
         with open(tempAln.name + "_phyml_tree.txt", "r") as treeFile: tree = treeFile.readline().strip()
-    except: tree = "NA"
+    except:
+        try:
+            with open(tempAln.name + "_phyml_tree", "r") as treeFile: tree = treeFile.readline().strip()
+        except:
+            if verbose:
+                sys.stderr.write("Tree not found at " + tempAln.name + "_phyml_tree.txt\n")
+            tree = "NA"
     try:
         with open(tempAln.name + "_phyml_stats.txt", "r") as statsFile:
             stats = statsFile.read().split()
             lnL = stats[stats.index("Log-likelihood:")+1]
-    except: lnL = "NA"
+    except:
+        try:
+            with open(tempAln.name + "_phyml_stats", "r") as statsFile:
+                stats = statsFile.read().split()
+                lnL = stats[stats.index("Log-likelihood:")+1]
+        except:
+            lnL = "NA"
     #remove files
     if not test: os.system("rm " + tempAln.name + "*")
     return (tree,lnL,)
 
 
 #command that actually runs phyml and gets the bestTree 
-def phymlCrossVal(seqBlock0, seqBlock1, indNames, model, opt, phyml, prefix = "",tmpDir=None, test = False, log="/dev/null"):
+def phymlCrossVal(seqArray0, seqArray1, indNames, model, opt, phyml, prefix = "",tmpDir=None, test = False, log="/dev/null"):
     #write file
     tempAln0 = tempfile.NamedTemporaryFile(mode="w",prefix=prefix,suffix=".0.phy",dir=tmpDir,delete=False)
     tempAln1 = tempfile.NamedTemporaryFile(mode="w",prefix=prefix,suffix=".1.phy",dir=tmpDir,delete=False)
-    with tempAln0 as tempAln0: tempAln0.write(genomics.makeAlnString(indNames,seqBlock0))
-    with tempAln1 as tempAln1: tempAln1.write(genomics.makeAlnString(indNames,seqBlock1))
+    with tempAln0 as tempAln0: tempAln0.write(genomics.makeAlnString(seqNames,seqArray0))
+    with tempAln1 as tempAln1: tempAln1.write(genomics.makeAlnString(seqNames,seqArray1))
     #first way validation
     #tree
     phymlCommand = " ".join([phyml,"--input", tempAln0.name,"--model", model, "-o", opt, ">>", log])
@@ -76,40 +88,38 @@ def phymlCrossVal(seqBlock0, seqBlock1, indNames, model, opt, phyml, prefix = ""
 
 '''A function that reads from the window queue, calls sume other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using'''
-def phyml_wrapper(windowQueue, resultQueue, windType, genoFormat, model, opt, outgroup, phyml, minSites, minPerInd, bootstraps=0, crossVal=False, test = False):
+def phyml_wrapper(windowQueue, resultQueue, windType, genoFormat, model, opt, outgroup, phyml, minSites, minPerInd, maxLDphase=False, bootstraps=0, crossVal=False, test = False):
     while True:
         windowNumber,window = windowQueue.get()
-        sites = window.seqLen()
-        if test or verbose: print >> sys.stderr, "Window", windowNumber, "received for analysis, length:", sites
+        Nsites = window.seqLen()
+        if test or verbose: print >> sys.stderr, "Window", windowNumber, "received for analysis, length:", Nsites
         if windType == "coordinate" or windType == "predefined": scaf,start,end,mid = (window.scaffold, window.start, window.end, window.midPos())
         else: scaf,start,end,mid = (window.scaffold, window.firstPos(), window.lastPos(), window.midPos())
         prefix = scaf + "_" + str(start) + "_" + str(end) + "_"
-        if sites >= minSites:
-            block = window.seqs
-            indNames = window.names
-            #convert block if necessary
-            if genoFormat == "phased":
-                block = [seq for phasedSeq in [genomics.parsePhase(x) for x in block] for seq in phasedSeq]
-                indNames = [i + "_" + x for i in indNames for x in ("A","B")]
+        if Nsites >= minSites:
+            aln = genomics.genoToAlignment(window.seqDict(), genoFormat = genoFormat)
+            seqNames = aln.names
+            seqs = aln.array
             if outgroup:
-                for i in indNames:
-                    if i in outgroup: i = i+"*"
-            sitesPerInd = [len([x for x in seq if x != "N"]) for seq in block]
+                for seqName in seqNames:
+                    if seqName in outgroup: seqName +="*"
+            sitesPerInd = aln.seqNonNan()
             if min(sitesPerInd) >= minPerInd:
+                if maxLDphase: aln = genomics.maxLDphase(aln)
                 #if enough sites get tree
-                tree,lnL = phymlTree(block,indNames,model,opt,phyml,prefix,tmpDir=tmpDir, test = test, log = log)
+                tree,lnL = phymlTree(aln.array,seqNames,model,opt,phyml,prefix,tmpDir=tmpDir, test = test, log = log)
                 bsTrees = []
                 for b in range(bootstraps):
                     #get bootstrap trees if necessary
-                    positions = np.random.choice(range(sites), sites, replace=True)
-                    newBlock = [[seq[p] for p in positions] for seq in block]
-                    bsTree,bslnL = phymlTree(newBlock,indNames,model,opt,phyml,prefix + str(b) + "_",tmpDir=tmpDir, test = test, log = log)
+                    positions = np.random.choice(range(Nsites), Nsites, replace=True)
+                    newArr = aln.array[:,positions]
+                    bsTree,bslnL = phymlTree(newArr,seqNames,model,opt,phyml,prefix + str(b) + "_",tmpDir=tmpDir, test = test, log = log)
                     bsTrees.append(bsTree)
                 trees = [tree] + bsTrees
                 if crossVal:
-                    block0 = [[s[i] for i in range(int(round(sites/2)))] for s in block]
-                    block1 = [[s[i] for i in range(int(round(sites/2)), sites)] for s in block]
-                    cvlnL = phymlCrossVal(block0,block1,indNames,model,opt,phyml,prefix,tmpDir=tmpDir, test = test, log = log)
+                    arr0 = aln.arr[:,range(int(round(Nsites/2)))]
+                    arr1 = aln.arr[:,range(int(round(Nsites/2)), Nsites)]
+                    cvlnL = phymlCrossVal(arr0,arr1,indNames,model,opt,phyml,prefix,tmpDir=tmpDir, test = test, log = log)
             else:
                 trees = ["NA"] + ["NA"]*bootstraps
                 lnL = cvlnL = "NA"
@@ -117,7 +127,7 @@ def phyml_wrapper(windowQueue, resultQueue, windType, genoFormat, model, opt, ou
             trees = ["NA"] + ["NA"]*bootstraps
             lnL = cvlnL = "NA"
                 
-        data = [window.scaffold, str(start), str(end), str(mid), str(sites), str(lnL)]
+        data = [window.scaffold, str(start), str(end), str(mid), str(Nsites), str(lnL)]
         if crossVal: data.append(cvlnL)
         
         output = ["\t".join(data)] + trees
@@ -197,6 +207,7 @@ parser.add_argument("--individuals", help="Individuals to include, separated by 
 
 parser.add_argument("--indFile", help="File of individuals to include, one per line", action = "store")
 
+parser.add_argument("--maxLDphase", help="Do crude phase improvement based on LD", action = "store_true")
 
 parser.add_argument("--outgroup", help="Outgroup individuals, separated by comma", action = "store", metavar="ind1,ind2,ind3...")
 
@@ -353,7 +364,8 @@ the function we call is actually a wrapper for another function.(s) This one rea
 
 for x in range(threads):
     worker = Process(target=phyml_wrapper, args = (windowQueue, resultQueue, windType, genoFormat,
-                                                   model, opt, outgroup, phyml, minSites, minPerInd, bootstraps, args.crossVal, test,))
+                                                   model, opt, outgroup, phyml, minSites, minPerInd,
+                                                   args.maxLDphase, bootstraps, args.crossVal, test,))
     worker.daemon = True
     worker.start()
     print >> sys.stderr, "started worker", x
