@@ -16,7 +16,7 @@ from time import sleep
 '''main worker function. This will watch the inQueue for pods, and pass lines from these pods to be parsed and filtered, before packaging back into a pod and sending on to the resultQueue'''
 def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,headers,include,exclude,samples,minCalls,minPopCalls,
                     minAlleles,maxAlleles,minVarCount,maxHet,minFreq,maxFreq,
-                    HWE_P,HWE_side,popDict,ploidyDict,fixed,skipChecks,thinDist):
+                    HWE_P,HWE_side,popDict,ploidyDict,fixed,forcePloidy,thinDist):
     while True:
         podNumber,inPod = inQueue.get()
         if verbose: print >> sys.stderr, "Pod", podNumber, "received for analysis."
@@ -28,7 +28,7 @@ def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,headers,in
             objects = line.split()
             if (include and objects[0] not in include) or (exclude and objects[0] in exclude): continue
             site = genomics.GenomeSite(genotypes=objects[2:], sampleNames=headers[2:], popDict=popDict,
-                                       ploidyDict=ploidyDict, genoFormat=inputGenoFormat, skipChecks=skipChecks)
+                                       ploidyDict=ploidyDict, genoFormat=inputGenoFormat, forcePloidy=forcePloidy)
             goodSite = True
             if thinDist:
                 pos = int(objects[1])
@@ -134,7 +134,9 @@ parser.add_argument("--popsFile", help="Optional file of sample names and popula
 parser.add_argument("--keepAllSamples", help="Keep all samples (not just specified populations)", action='store_true')
 
 #other
-parser.add_argument("--haploid", help="Samples that are haploid (comma separated)", action = "store", metavar = "sample names")
+parser.add_argument("--ploidy", help="Ploidy for each sample", action = "store", type=int, nargs="+")
+parser.add_argument("--ploidyFile", help="File with samples names and ploidy as columns", action = "store")
+parser.add_argument("--forcePloidy", help="Force genotypes to specified ploidy", action = "store_true")
 
 #contigs
 parser.add_argument("--include", help="include contigs (separated by commas)", action='store')
@@ -278,11 +280,15 @@ for popName in popNames:
 
 Out.write("\t".join(headers[0:2] + samples) + "\n")
 
-ploidyDict = dict(zip(allSamples,[2]*len(allSamples)))
+if args.ploidy is not None:
+    ploidy = args.ploidy if len(args.ploidy) != 1 else args.ploidy*len(samples)
+    assert len(ploidy) == len(samples), "Incorrect number of ploidy values supplied."
+    ploidyDict = dict(zip(samples,ploidy))
+elif args.ploidyFile is not None:
+    with open(args.ploidyFile, "r") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
+else: ploidyDict = dict(zip(samples,[None]*len(samples)))
 
-if args.haploid:
-    for sample in args.haploid.split(","):
-        ploidyDict[sample] = 1
+
 
 ##########################################################################################################################
 
@@ -310,7 +316,7 @@ This one reads from the pod queue, passes each line some analysis function(s), g
 for x in range(nProcs):
     worker = Process(target=analysisWrapper,args=(inQueue,doneQueue,args.inputGenoFormat,args.outputGenoFormat,headers,include,exclude,samples,minCalls,minPopCalls,
                     minAlleles,maxAlleles,minVarCount,maxHet,minFreq,maxFreq,
-                    HWE_P,HWE_side,popDict,ploidyDict,fixed,args.skipChecks,args.thinDist,))
+                    HWE_P,HWE_side,popDict,ploidyDict,fixed,args.forcePloidy,args.thinDist,))
     worker.daemon = True
     worker.start()
 
