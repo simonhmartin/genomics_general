@@ -20,7 +20,7 @@ class vcfGenoData:
             elif len(self.GT) == 1:
                 self.phase = ""
                 self.alleles = self.GT
-            else: raise ValueError, "Error parsing genotype. Check genotype field."
+            else: raise ValueError, "Error parsing genotype:" + str(self.GT)
     
     def getType(self):
         if not hasattr(self,"GT"): return None
@@ -92,7 +92,7 @@ class VcfSite:
         
         else: sampleAlleles = [missing]*ploidy
         
-        if withPhase: return "/".join(sampleAlleles)
+        if withPhase: return genoData.phase.join(sampleAlleles)
         else: return "".join(sampleAlleles)
     
     
