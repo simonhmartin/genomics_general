@@ -6,6 +6,7 @@ from copy import deepcopy
 import string
 import time
 import itertools
+import re
 
 
 ##################################################################################################################
@@ -41,79 +42,11 @@ def numArrayToSeqArray(numArray):
     return seqArray
 
 
-#class Genotype:
-    #def __init__(self, geno, haploid = False, genoFormat=None, skipChecks = False):
-        #if genoFormat is None:
-            #l = len(geno)
-            #if l == 1: genoFormat = "diplo"
-            #elif l == 2: genoFormat = "paired"
-            #elif l == 3: genoFormat = "phased"
-        #if not skipChecks:
-            #if genoFormat == "phased":
-                #assert geno[1] in ["|","/"] and "".join(sorted(geno.split(geno[1]))) in PAIRS, "Unrecognised Genotype"
-                #self.alleles = [geno[0],geno[2]]
-                #self.phase = geno[1]
-            #elif genoFormat == "diplo":
-                #assert geno in DIPLOTYPES, "Unrecognised Genotype"
-                #self.alleles = list(haplo(geno))
-                #self.phase = "/"
-            #elif genoFormat == "paired":
-                #assert "".join(sorted(geno)) in PAIRS, "Unrecognised Genotype"
-                #self.alleles = list(geno)
-                #self.phase = "/"
-            #else: raise ValueError("Invalid genotype format")
-        
-        #elif genoFormat == "phased":
-            #self.alleles = [geno[0],geno[2]]
-            #self.phase = geno[1]
-        #elif genoFormat == "diplo":
-            #self.alleles = list(haplo(geno))
-            #self.phase = "/"
-        #elif genoFormat == "paired":
-            #self.alleles = list(geno)
-            #self.phase = "/"
-        #else:
-            #raise ValueError("Invalid genotype format")
-        
-        #self.numAlleles = [seqNumDict[a] for a in self.alleles]
-        
-        #if haploid:
-            #assert self.alleles[0] == self.alleles[1], "Biallelic genotype cannot be assigned as haploid"
-            #self.alleles = self.alleles[:1]
-            #self.phase = None
-            #self.ploidy = 1
-        #else:
-            #self.ploidy = 2
-        
-    #def isHaploid(self): return self.ploidy == 1
-    
-    #def asPhased(self):
-        #if self.isHaploid(): return self.alleles
-        #else: return self.phase.join(self.alleles)
-    
-    #def asDiplo(self):
-        #if self.isHaploid(): return self.alleles[0]
-        #else: return diplo("".join(sorted(self.alleles)))
-    
-    #def asCoded(self, codeDict, missing = None): #code alleles e.g. 0 and 1, with phase (0/1)
-        #if missing is None: missing = "."
-        #if self.isHaploid():
-            #try: return codeDict[self.alleles[0]]
-            #except: return missing
-        #else:
-            #try: return self.phase.join([codeDict[a] for a in self.alleles])
-            #except: return missing + self.phase + missing
-    
-    #def asCount(self, countAllele, missing = None): # code whole genotype as single value
-        #if missing is None: missing = 9
-        #try: return np.bincount(self.numAlleles, minlength = 4)[seqNumDict[countAllele]]
-        #except: return missing
-
 class Genotype:
     def __init__(self, geno, genoFormat, ploidy = None, forcePloidy=False):
         if genoFormat == "phased":
             self.alleles = list(geno)[::2]
-            self.phase = geno[1]
+            self.phase = geno[1] if len(geno) > 1 and len(geno)%2 == 1 else ""
         elif genoFormat == "alleles" or genoFormat == "pairs" or genoFormat == "haplo":
             self.alleles = list(geno)
             self.phase = ["/"]
@@ -125,10 +58,13 @@ class Genotype:
         
         if ploidy is not None:
             ploidyError = ploidy - len(self.alleles)
-            if forcePloidy:
-                if ploidyError > 0: self.alleles += ["N"]*ploidyError
-                elif ploidyError < 0: self.alleles = ["N"]*ploidy
-            else: raise ValueError("Ploidy doesn't match number of alleles")
+            if ploidyError != 0:
+                if forcePloidy:
+                    if ploidyError > 0: self.alleles += ["N"]*ploidyError
+                    elif ploidyError < 0:
+                        if len(set(self.alleles)) == 1: self.alleles = [self.alleles[0]]*ploidy
+                        else: self.alleles = ["N"]*ploidy
+                else: raise ValueError("Ploidy doesn't match number of alleles")
         else: ploidy = len(self.alleles)
         
         self.ploidy = ploidy
@@ -477,7 +413,9 @@ def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAllel
     #if we want fixed differences only and there are two or more pops specified
     if fixed:
         #all pops must have only one allele, but taken together must have more than one
-        if not set([len(site.alleles(pop=popName)) for popName in site.pops.keys()]) == set([1]) and len(site.alleles(samples = sum([site.pops[popName] for popName in popNames],[]))) > 1 : return False
+        allelesByPop = [site.alleles(pop=popName) for popName in site.pops.keys()]
+        if not (set([len(popAlleles) for popAlleles in allelesByPop]) == set([1]) and
+                len(set([a for popAlleles in allelesByPop for a in popAlleles])) > 1): return False
     
     #if we get here we've passed all filters
     return True
@@ -543,7 +481,7 @@ class Alignment:
         
         if sampleNames is None: sampleNames = self.names
         else: assert len(sampleNames) == self.N, "Incorrect number of sample names."
-        self.sampleNames = sampleNames
+        self.sampleNames = np.array(sampleNames)
         
         if groups is not None:
             assert len(groups) == self.N, "Incorrect number of groups."
@@ -569,8 +507,8 @@ class Alignment:
         indices += [np.where(self.names == n)[0][0] for n in names]
         indices = np.unique(indices)
         return Alignment(sequences = self.array[indices], numArray=self.numArray[indices],
-                        names=self.names[indices], groups=self.groups[indices])
-
+                        names=self.names[indices], groups=self.groups[indices], sampleNames=self.sampleNames[indices])
+    
     def slice(self, indices = None, startPos = None, endPos = None):
         if indices is None:
             if startPos is None: startPos = min(self.positions)
@@ -592,7 +530,20 @@ class Alignment:
                 distMat[i,j] = distMat[j,i] = numHamming(self.numArray[i,:][nanMask], self.numArray[j,:][nanMask])
         return distMat
     
-    def varSites(self): return np.where([len(np.unique(self.numArray[:,x][self.nanMask[:,x]])) > 1 for x in xrange(self.l)])[0]
+    def pairDist(self, i, j):
+        nanMask = self.nanMask[i,:] & self.nanMask[j,:]
+        return numHamming(self.numArray[i,:][nanMask], self.numArray[j,:][nanMask])
+    
+    def sampleHet(self, sampleNames=None, asList = False):
+        if sampleNames is None: sampleNames,sampleIndices = uniqueIndices(self.sampleNames, preserveOrder=True)
+        else: sampleIndices = [np.where(self.sampleNames == sampleName)[0] for sampleName in sampleNames]
+        hets = [self.pairDist(x[0],x[1]) if len(x)==2 else np.NaN for x in sampleIndices]
+        return dict(zip(sampleNames,hets)) if not asList else hets
+    
+    def varSites(self, indices=None, names=None):
+        if names is not None: indices = np.where(np.in1d(aln.names,names))[0]
+        if indices is None: indices = np.arange(self.N)
+        return np.where([len(np.unique(self.numArray[indices,x][self.nanMask[indices,x]])) > 1 for x in xrange(self.l)])[0]
     
     def biSites(self): return np.where([len(np.unique(self.numArray[:,x][self.nanMask[:,x]])) == 2 for x in xrange(self.l)])[0]
     
@@ -694,19 +645,17 @@ def LD(basesA, basesB, ancA=None, ancB=None):
     return {"D":D, "Dprime": Dprime, "r":r, "r2":r**2}
 
 
+def uniqueIndices(things, preserveOrder = False, asDict=False):
+    T,X,I = np.unique(things, return_index=True, return_inverse=True)
+    indices = np.array([np.where(I == i)[0] for i in range(len(T))])
+    order = np.argsort(X) if preserveOrder else np.arange(len(X))
+    return dict(zip(T[order], indices[order])) if asDict else [T[order], indices[order]]
+
 def maxLDphase(aln, sampleIndices=None, stat = "r2"):
     if sampleIndices is None:
-        sampleNames = np.array(aln.sampleNames)
-        sampleIndices = [[0]]
-        namesFound = [sampleNames[0]]
-        for i in range(1,len(sampleNames)):
-            if sampleNames[i] == namesFound[-1]: sampleIndices[-1].append(i)
-            else:
-                namesFound.append(sampleNames[i])
-                sampleIndices.append([i])
+        sampleIndices = uniqueIndices(aln.sampleNames, preserveOrder = True)[1]
     
     assert aln.N == sum([len(ind) for ind in sampleIndices]), "Mistmatch between number of indices and sequences"
-    
     assert len(aln.biSites()) == len(aln.varSites()), "Only biallelic or invariant sites are permitted"
     
     nHets = np.array([sum([len(np.unique(aln.numArray[ind,x][aln.nanMask[ind,x]]))>1 for ind in sampleIndices]) for x in range(aln.l)])
@@ -761,23 +710,22 @@ def numHamming(numArrayA, numArrayB):
 
 
 def distMatrix(sequences):
-    numSeqs = [[seqNumDict[b] for b in seq] for seq in seqs]
+    numSeqs = [[seqNumDict[b] for b in seq] for seq in sequences]
     DNAarray = np.array(numSeqs)
+    nanMaskTotal = DNAarray>=0
     N,ln = DNAarray.shape
     distMat = np.zeros((N,N))
     for i in range(N - 1):
         for j in range(i + 1, N):
-            nanMask = self.nanMask[i,:] & self.nanMask[j,:]
-            distMat[i,j] = distMat[j,i] = numHamming(self.numArray[i,:][nanMask], self.numArray[j,:][nanMask])
+            nanMask = nanMaskTotal[i,:] & nanMaskTotal[j,:]
+            distMat[i,j] = distMat[j,i] = numHamming(DNAarray[i,:][nanMask], DNAarray[j,:][nanMask])
     return distMat
 
 
 class SampleData:
     def __init__(self, indNames = [], popNames = None, popInds = [], popNumbers = None, ploidyDict = None):
-        if not popNumbers:
-            popNumbers = range(len(popInds))
-        if not popNames:
-            popNames = [str(x) for x in popNumbers]
+        if popNumbers is None: popNumbers = range(len(popInds))
+        if popNames is None: popNames = [str(x) for x in popNumbers]
         assert len(popNames) == len(popInds) == len(popNumbers), "Names, inds and numbers should be same length."
         self.popNames = popNames
         self.popNumbers = popNumbers
@@ -803,7 +751,7 @@ class SampleData:
             return self.popNumbers[self.popNames.index(popName)]
 
 
-def popDiv(Aln):
+def popDiv(Aln, doPairs = True):
     distMat = Aln.distMatrix()
     np.fill_diagonal(distMat, np.NaN) # set all same-with-same to Na
     
@@ -821,6 +769,8 @@ def popDiv(Aln):
     for x in range(nPops):
         output["pi_" + pops[x]] = np.nanmean(distMat[np.ix_(popIndices[x],popIndices[x])])
     
+    if not doPairs: return output
+
     #pairs
     for x in range(nPops-1):
         for y in range(x+1, nPops):
@@ -889,6 +839,53 @@ def ABBABABA(Aln, P1, P2, P3, P4, minData):
     return output
 
 
+#def ABBABABA_countBased(Aln, P1, P2, P3, P4, minData, outgroupFixed=False):
+    ##subset by population
+    #P1Aln = Aln.subset(groups=[P1])
+    #P2Aln = Aln.subset(groups=[P2])
+    #P3Aln = Aln.subset(groups=[P3])
+    #P4Aln = Aln.subset(groups=[P4])
+    #P123Aln = Aln.subset(groups=[P1,P2,P3,P4])
+    #ABBAsum = BABAsum = maxABBAsum = maxBABAsum = BBAAsum = 0.0
+    #sitesUsed = 0
+    ##get derived frequencies for all biallelic siites
+    #for i in P123Aln.biSites():
+        ##if theres a minimum proportion of sites, check all pops
+        #if minData and np.any([A.siteNonNan(i, prop=True) for A in (P1Aln, P2Aln, P3Aln, P4Aln)] < minData): continue
+        #allFreqs = Aln.siteFreqs(i)[0] #an array with 4 values, the freq for A,C,G and T
+        ## get frequencies for each pop
+        #P1Freqs,P2Freqs,P3Freqs,P4Freqs = [A.siteFreqs(i, asCounts=True)[0] for A in (P1Aln, P2Aln, P3Aln, P4Aln)]
+        ##check for bad data
+        #if np.any(np.isnan(P1Freqs)) or np.any(np.isnan(P2Freqs)) or np.any(np.isnan(P3Freqs)) or np.any(np.isnan(P4Freqs)): continue
+        ##if the outgroup is fixed, then that is the ancestral state - otherwise the derived state is the most common allele overall
+        #if np.max(P4Freqs) == np.sum(P4Freqs):
+            #anc = np.argmax(P4Freqs) #ancetral allele is which is fixed (get the index)
+            #der = [i for i in np.where(allFreqs > 0)[0] if i != anc][0] # derived is the index that is > 0 but not anc
+        #elif not outgroupFixed: der,anc = np.argsort(allFreqs)[-2:]# assign second and most common as derived and ancestral
+        #else: continue
+        ## get weigtings for ABBAs and BABAs
+        #ABBAsum += P1Freqs[anc] * P2Freqs[der] * P3Freqs[der] * P4Freqs[anc]
+        #BABAsum += P1Freqs[der] * P2Freqs[anc] * P3Freqs[der] * P4Freqs[anc]
+        #BBAAsum += P1Freqs[der] * P2Freqs[der] * P3Freqs[anc] * P4Freqs[anc]
+        #PDFreqs = P3Freqs if P3Freqs[der] >= P2Freqs[der] else P2Freqs
+        #maxABBAsum += P1Freqs[anc] * PDFreqs[der] * PDFreqs[der] * P4Freqs[anc]
+        #maxBABAsum += P1Freqs[der] * PDFreqs[anc] * PDFreqs[der] * P4Freqs[anc]
+        #sitesUsed += 1
+    ##calculate D, fd
+    #output = {}
+    #try: output["D"] = (ABBAsum - BABAsum) / (ABBAsum + BABAsum)
+    #except: output["D"] = np.NaN
+    #try:
+        #if output["D"] >= 0: output["fd"] = (ABBAsum - BABAsum) / (maxABBAsum - maxBABAsum)
+        #else: output["fd"] = np.NaN
+    #except: output["fd"] = np.NaN
+    #output["ABBA"] = ABBAsum
+    #output["BABA"] = BABAsum
+    #output["sitesUsed"] = sitesUsed
+    
+    #return output
+
+
 def popSiteFreqs(aln, minData = 0):
     #get population indices
     pops,indices = np.unique(aln.groups, return_inverse = True)
@@ -911,324 +908,81 @@ def popSiteFreqs(aln, minData = 0):
 
 ##Window object class, stores names, sequences and window information
 
-#class CoordWindow: 
-    #def __init__(self, scaffold = None, start = None, end = None, seqs = None, names = None, positions = None, ID = None):
-        #if not names and not seqs:
-            #names = []
-            #seqs = []
-        #elif not names:
-            #names = [None]*len(seqs)
-        #elif not seqs:
-            #seqs = [[] for name in names]
-        #assert len(names) == len(seqs)
-        #if not positions:
-            #positions = []
-        #if len(seqs) > 0:
-            ##print len(seqs[0]), len(positions)
-            #assert len(seqs[0]) == len(positions) # ensure correct number of positions is given
-            #assert len(set([len(seq) for seq in seqs])) == 1 #ensure sequences are equal length
-            #for seq in seqs:
-                #assert type(seq) is list # added sequences must each be a list
-        #self.scaffold = scaffold
-        #self.start = start
-        #self.end = end
-        #self.names = names
-        #self.positions = positions
-        #self.seqs = seqs
-        #self.n = len(self.names)
-        #self.ID = ID
-    
-    ##method for adding
-    #def addBlock(self, seqs, positions):
-        #assert len(seqs) == self.n # ensure correct number seqs is added
-        #if len(seqs) > 0:
-            #assert len(seqs[0]) == len(positions) # ensure correct number of positions is given
-            #assert len(set([len(seq) for seq in seqs])) == 1 #ensure sequences are equal length
-            #for seq in seqs:
-                #assert type(seq) is list # added sequences must each be a list
-        #for x in range(len(seqs)):
-            #self.seqs[x] += seqs[x]
-        #self.positions += positions
-    
-    #def addSite(self, GTs, position):
-        #assert len(GTs) == self.n # ensure correct number seqs is added
-        #for x in range(self.n):
-            #self.seqs[x].append(GTs[x])
-        #self.positions.append(position)
-    
-    #def seqLen(self):
-        #return len(self.positions)
-    
-    #def firstPos(self):
-        #return min(self.positions)
-    
-    #def lastPos(self):
-        #return max(self.positions)
-    
-    #def slide(self,step=None,newStart=None,newEnd=None):
-        ##function to slide window along scaffold
-        #assert step != None or newStart != None 
-        #if step:
-            #newStart = self.start + step
-            #newEnd = self.end + step            
-        #self.start = newStart
-        #if newEnd:
-            #self.end = newEnd
-        ##find first position beyon newStart
-        #i = 0
-        #while i < len(self.positions) and self.positions[i] < newStart:
-            #i += 1
-        ##slide positions
-        #self.positions = self.positions[i:]
-        ##slide seqs
-        #self.seqs = [seq[i:] for seq in self.seqs]
-    
-    #def seqDict(self):
-        #return dict(zip(self.names,self.seqs))
-    
-    #def midPos(self):
-        #try:
-            #return int(round(sum(self.positions)/len(self.positions)))
-        #except:
-            #return np.NaN
 
-
-
-#Coordinate window class - now using a numpy array
-class CoordWindow:
-    def __init__(self, scaffold = None, start = None, end = None, seqs = None, names = None, positions = None, ID = None):
-        assert names is not None or seqs is not None, "Either names or sequences must be provided"
-        if names is None: names = [None]*len(seqs)
-        self.names = names
+class GenoWindow:
+    def __init__(self, scaffold = None, limits=[-np.inf,np.inf],sites = None, names = None, positions = None, ID = None):
+        if sites is not None and positions is not None:
+            assert len(set([len(site) for site in sites])) == 1, "Number of genotypes per site must be equal."
+            assert len(sites[0]) == len(names), "Number of names must match number of genotypes per site."
+            assert len(positions) == len(sites), "Positions must match number of sites"
+        else:
+            sites = []
+            positions = []
+        self.names = names if names is not None else []
         self.n = len(self.names)
-        if seqs is None: self.seqs = np.empty(shape=(self.n,0), dtype=str)
-        else:
-            self.seqs = np.array(seqs)
-            assert len(self.names) == self.seqs.shape[0], "Number of names and sequences must match"
-        if positions is None: self.positions = range(1,self.seqs.shape[1]+1)
-        else:
-            assert seqs.shape[1] == len(positions), "Positions must match sequence length"
-            self.positions = positions
+        self.sites = sites if sites is not None else []
+        self.positions = positions if positions is not None else []
         self.scaffold = scaffold
-        self.start = start
-        self.end = end
+        self.limits = limits
         self.ID = ID
     
-    def copy(self): return CoordWindow(scaffold=self.scaffold, start=self.start, end=self.end,
-                                       seqs=self.seqs[:,:], names=self.names[:], positions=self.positions[:], ID=self.ID)
+    def copy(self): return GenoWindow(scaffold=self.scaffold, limits=self.limits[:],
+                                      sites=self.sites[:], names=self.names[:], positions=self.positions[:], ID=self.ID)
     
-    #method for adding
-    def addBlock(self, seqs, positions):
-        seqs = np.array(seqs)
-        assert seqs.shape[0] == self.n, "incorrect number of sequnces addded"
-        assert seqs.shape[1] == len(positions), "Number of positions does not match sequence length"
-        self.seqs = np.hstack((self.seqs, seqs))
+    ##method for adding
+    def addBlock(self, sites, positions):
+        assert len(set([len(site) for site in sites])) == 1, "Number of genotypes per site must be equal."
+        assert len(sites[0]) == self.n, "Number of genotypes per site must match number of names."
+        assert len(positions) == len(sites), "Positions must match number of sites"
+        assert np.all(self.limits[0] <= positions <= self.limits[1]), "Position outside of window limit"
+        self.sites += sites
         self.positions += positions
     
-    def addSite(self, GTs, position):
-        GTs = np.array(GTs)
-        GTs = GTs.reshape((GTs.shape[0],1))
-        self.seqs = np.append(self.seqs, GTs, axis = 1)
+    def addSite(self, GTs, position=np.NaN, ignorePosition=False):
+        assert len(GTs) == self.n, "Number of genotypes per site must match number of names."
+        if not ignorePosition:
+            assert self.limits[0] <= position <= self.limits[1], "Position: " + str(position) + " outside of window limits: " + "-".join([str(l) for l in self.limits])
+        else: position = np.NaN
         self.positions.append(position)
+        self.sites.append(GTs)
     
-    def seqLen(self): return self.seqs.shape[1]
+    def seqLen(self): return len(self.positions)
     
     def firstPos(self): return min(self.positions)
     
     def lastPos(self): return max(self.positions)
     
-    def slide(self,step=None,newStart=None,newEnd=None):
+    def slide(self,step=None,newLimits=None):
         #function to slide window along scaffold
-        assert step != None or newStart != None 
-        if step:
-            newStart = self.start + step
-            newEnd = self.end + step            
-        self.start = newStart
-        if newEnd: self.end = newEnd
-        #find first position beyon newStart
+        assert step != None or newLimits != None 
+        if step: self.limits = [l+step for l in self.limits]
+        else: self.limits = newLimits
         i = 0
-        while i < len(self.positions) and self.positions[i] < newStart: i += 1
-        #slide positions
+        while i < len(self.positions) and self.positions[i] < self.limits[0]: i += 1
+        #slide positions and sites
         self.positions = self.positions[i:]
-        #slide seqs
-        self.seqs = self.seqs[:,i:]
-    
-    def seqDict(self): return dict(zip(self.names,[list(s) for s in self.seqs]))
-    
-    def midPos(self):
-        try: return int(round(sum(self.positions)/len(self.positions)))
-        except: return np.NaN
-
-
-##sites window class - has a fixed number of sites (old version without numpy)
-#class SitesWindow: 
-    #def __init__(self, scaffold = None, seqs = None, names = None, positions = None, ID = None):
-        #if not names and not seqs:
-            #names = []
-            #seqs = []
-        #elif not names:
-            #names = [None]*len(seqs)
-        #elif not seqs:
-            #seqs = [[] for name in names]
-        #assert len(names) == len(seqs)
-        #if not positions:
-            #positions = []
-        #if len(seqs) > 0:
-            #assert len(seqs[0]) == len(positions) # ensure correct number of positions is given
-            #assert len(set([len(seq) for seq in seqs])) == 1 #ensure sequences are equal length
-            #for seq in seqs:
-                #assert type(seq) is list # added sequences must each be a list
-        #self.scaffold = scaffold
-        #self.names = names
-        #self.positions = positions
-        #self.seqs = seqs
-        #self.n = len(self.names)
-        #self.ID = ID
-    
-    ##method for adding
-    #def addBlock(self, seqs, positions):
-        #assert len(seqs) == self.n # ensure correct number seqs is added
-        #if len(seqs) > 0:
-            #assert len(seqs[0]) == len(positions) # ensure correct number of positions is given
-            #assert len(set([len(seq) for seq in seqs])) == 1 #ensure sequences are equal length
-            #for seq in seqs:
-                #assert type(seq) is list # added sequences must each be a list
-        #for x in range(len(seqs)):
-            #self.seqs[x] += seqs[x]
-        #self.positions += positions
-    
-    #def addSite(self, GTs, position):
-        #assert len(GTs) == self.n # ensure correct number seqs is added
-        #for x in range(self.n):
-            #self.seqs[x].append(GTs[x])
-        #self.positions.append(position)
-    
-    #def seqLen(self):
-        #return len(self.positions)
-    
-    #def firstPos(self):
-        #return min(self.positions)
-    
-    #def lastPos(self):
-        #return max(self.positions)
-    
-    #def trim(self,right=False,remove=None,leave=None):
-        #assert remove != None or leave != None
-        #if not remove: remove=self.seqLen() - leave
-        #if not right:
-            ##trim positions
-            #self.positions = self.positions[remove:]
-            ##slide seqs
-            #self.seqs = [seq[remove:] for seq in self.seqs]
-        #else:
-            #self.positions = self.positions[:-remove]
-            ##slide seqs
-            #self.seqs = [seq[:-remove] for seq in self.seqs]
-    
-    #def seqDict(self):
-        #return dict(zip(self.names,self.seqs))
-    
-    #def midPos(self):
-        #try:
-            #return int(round(sum(self.positions)/len(self.positions)))
-        #except:
-            #pass
-
-
-#sites window class - has a fixed number of sites - now using a numpy array
-class SitesWindow: 
-    def __init__(self, scaffold = None, seqs = None, names = None, positions = None, ID = None):
-        assert names is not None or seqs is not None, "Either names or sequences must be provided"
-        if names is None: names = [None]*len(seqs)
-        self.names = names
-        self.n = len(self.names)
-        if seqs is None: self.seqs = np.empty(shape=(self.n,0), dtype=str)
-        else:
-            self.seqs = np.array(seqs)
-            assert len(self.names) == self.seqs.shape[0], "Number of names and sequences must match"
-        if positions is None: self.positions = range(1,self.seqs.shape[1]+1)
-        else:
-            assert seqs.shape[1] == len(positions), "Positions must match sequence length"
-            self.positions = positions
-        self.scaffold = scaffold
-        self.ID = ID
-    
-    #method for adding
-    def addBlock(self, seqs, positions):
-        seqs = np.array(seqs)
-        assert seqs.shape[0] == self.n, "incorrect number of sequnces addded"
-        assert seqs.shape[1] == len(positions), "Number of positions does not match sequence length"
-        self.seqs = np.hstack((self.seqs, seqs))
-        self.positions += positions
-    
-    def addSite(self, GTs, position):
-        GTs = np.array(GTs)
-        GTs = GTs.reshape((GTs.shape[0],1))
-        self.seqs = np.append(self.seqs, GTs, axis = 1)
-        self.positions.append(position)
-    
-    def seqLen(self): return self.seqs.shape[1]
-    
-    def firstPos(self): return min(self.positions)
-    
-    def lastPos(self): return max(self.positions)
+        self.sites = self.sites[i:]
     
     def trim(self,right=False,remove=None,leave=None):
         assert remove != None or leave != None
         if not remove: remove=self.seqLen() - leave
         if not right:
-            #trim positions
+            #trim positions and sites
             self.positions = self.positions[remove:]
-            #slide seqs
-            self.seqs = self.seqs[:,remove:]
+            self.sites = self.sites[remove:]
         else:
             self.positions = self.positions[:-remove]
-            #slide seqs
-            self.seqs = self.seqs[:,-remove:]
+            self.sites = self.sites[:-remove]
     
-    def seqDict(self): return dict(zip(self.names,[list(s) for s in self.seqs]))
+    def seqDict(self, names=None):
+        if names is None: names = self.names
+        indices = [self.names.index(n) for n in names]
+        return dict(zip(names, [[site[i] for site in self.sites] for i in indices]))
     
     def midPos(self):
         try: return int(round(sum(self.positions)/len(self.positions)))
-        except: return None
+        except: return np.NaN
 
-
-#sites window class - has a fixed number of sites
-class SimpleWindow: 
-    def __init__(self, seqs = None, positions = None, names = None, ID=None):
-        assert names is not None or seqs is not None, "Either names or sequences must be provided"
-        if names is None: names = [None]*len(seqs)
-        self.names = names
-        self.n = len(self.names)
-        if seqs is None: self.seqs = np.empty(shape=(self.n,0), dtype=str)
-        else:
-            self.seqs = np.array(seqs)
-            assert len(self.names) == self.seqs.shape[0], "Number of names and sequences must match"
-        if positions is None: self.positions = [0]*self.seqs.shape[1]
-        else:
-            assert seqs.shape[1] == len(positions), "Positions must match sequence length"
-            self.positions = positions
-        self.ID = ID
-    
-    #method for adding
-    def addBlock(self, seqs, positions=None):
-        seqs = np.array(seqs)
-        assert seqs.shape[0] == self.n, "incorrect number of sequnces addded"
-        self.seqs = np.hstack((self.seqs, seqs))
-        if positions is not None:
-            assert seqs.shape[1] == len(positions), "Number of positions does not match sequence length"
-            self.positions += positions
-        else: self.positions += range(self.positions[-1]+1,self.positions[-1]+1, self.positions[-1]+seqs.shape[1])
-    
-    def addSite(self, GTs, position=None):
-        GTs = np.array(GTs)
-        GTs = GTs.reshape((GTs.shape[0],1))
-        self.seqs = np.append(self.seqs, GTs, axis = 1)
-        self.positions.append(position if position is not None else 0)
-    
-    def seqLen(self): return self.seqs.shape[1]
-    
-    def seqDict(self): return dict(zip(self.names,[list(s) for s in self.seqs]))
 
 
 #site object class for storing the information about a single site
@@ -1243,45 +997,50 @@ def parseGenoLine(line, splitPhased = False):
     objects = line.split()
     if len(objects) >= 3: site = Site(scaffold = objects[0], position = int(objects[1]), GTs = objects[2:])
     else: site = Site()
-    if splitPhased: site.GTs = [a for GT in site.GTs for a in [GT[0],GT[-1]]]
+    if splitPhased: site.GTs = [a for GT in site.GTs for a in re.split('/|\|', GT)]
     return site
 
+
 #sliding window generator function
-def slidingCoordWindows(genoFile, windSize, stepSize, names = None, splitPhased=False,
+def slidingCoordWindows(genoFile, windSize, stepSize, names = None, splitPhased=False, ploidy = None,
                         include = None, exclude = None, skipDeepcopy = False):
     #get file headers
     headers = genoFile.readline().split()
     allNames = headers[2:]
-    if not names: names = allNames
+    if names is None: names = allNames
     if splitPhased:
+        if ploidy is None: ploidy = [2]*len(allNames)
+        ploidyDict = dict(zip(allNames, ploidy))
         #if splitting phased, we need to split names too
-        allNames=[name+"_"+x for name in allNames for x in ["A","B"]]
-        names=[name+"_"+x for name in names for x in ["A","B"]]
-    columns = dict(zip(names, [allNames.index(name) for name in names])) # records file column for each name
+        allNames = [n + "_" + letter for n in allNames for letter in string.ascii_uppercase[:ploidyDict[n]]]
+        names = [n + "_" + letter for n in names for letter in string.ascii_uppercase[:ploidyDict[n]]]
+    #indices of samples
+    nameIndices = dict(zip(names, [allNames.index(name) for name in names])) # records file column for each name
     #window counter
     windowsDone = 0
     #initialise an empty window
-    window = CoordWindow(names = names, ID = 0)
+    window = GenoWindow()
     #read first line
     line = genoFile.readline()
     site = parseGenoLine(line,splitPhased)
     while line:
         #build window
-        while site.scaffold == window.scaffold and site.position <= window.end:
-            #add this site to the window
-            window.addSite(GTs=[site.GTs[columns[name]] for name in names], position=site.position)
+        while site.scaffold == window.scaffold and site.position <= window.limits[1]:
+            if site.position >= window.limits[0]:
+                #add this site to the window
+                window.addSite(GTs=[site.GTs[nameIndices[name]] for name in names], position=site.position)
             #read next line
             line = genoFile.readline()
             site = parseGenoLine(line,splitPhased)
         
         '''if we get here, the line in hand is incompatible with the currrent window
-            If the window is not empty, yeild it'''
+            If the window is not empty, yield it'''
         
         if window.scaffold is not None:
             windowsDone += 1
             
             if skipDeepcopy: yield window
-            else: yield deepcopy(window)
+            else: yield window.copy()
         
         #now we need to make a new window
         #if on same scaffold, just slide along
@@ -1293,13 +1052,12 @@ def slidingCoordWindows(genoFile, windSize, stepSize, names = None, splitPhased=
         else:
             #if its one we want to analyse, start new window
             if (not include and not exclude) or (include and site.scaffold in include) or (exclude and site.scaffold not in exclude):
-                window = CoordWindow(scaffold = site.scaffold, start = 1, end = windSize, names = names, ID = windowsDone + 1)
+                window = GenoWindow(scaffold = site.scaffold, limits=[1,windSize], names = names, ID = windowsDone + 1)
             
             #if its a scaf we don't want, were going to read lines until we're on one we do want
             else:
                 badScaf = site.scaffold
                 while site.scaffold == badScaf or (include and site.scaffold not in include and site.scaffold is not None) or (exclude and site.scaffold in exclude and site.scaffold is not None):
-                
                     line = genoFile.readline()
                     site = parseGenoLine(line,splitPhased)
             
@@ -1308,23 +1066,27 @@ def slidingCoordWindows(genoFile, windSize, stepSize, names = None, splitPhased=
             break
     
 
+
 #sliding window generator function
 def slidingSitesWindows(genoFile, windSites, overlap, maxDist = np.inf, minSites = None, names = None,
-                        splitPhased=False, include = None, exclude = None, skipDeepcopy = False):
+                        splitPhased=False, ploidy=None, include = None, exclude = None, skipDeepcopy = False):
     if not minSites: minSites = windSites #if minSites < eindSites, windows at ends of scaffolds can still be emmitted
     #get file headers
     headers = genoFile.readline().split()
     allNames = headers[2:]
-    if not names: names = allNames
+    if names is None: names = allNames
     if splitPhased:
+        if ploidy is None: ploidy = [2]*len(allNames)
+        ploidyDict = dict(zip(allNames, ploidy))
         #if splitting phased, we need to split names too
-        allNames=[name+"_"+x for name in allNames for x in ["A","B"]]
-        names=[name+"_"+x for name in names for x in ["A","B"]]
-    columns = dict(zip(names, [allNames.index(name) for name in names])) # records site column for each name
+        allNames = [n + "_" + letter for n in allNames for letter in string.ascii_uppercase[:ploidyDict[n]]]
+        names = [n + "_" + letter for n in names for letter in string.ascii_uppercase[:ploidyDict[n]]]
+    #indices of samples
+    nameIndices = dict(zip(names, [allNames.index(name) for name in names])) # records file column for each name
     #window counter
     windowsDone = 0
     #initialise an empty window
-    window = SitesWindow(names = names, ID = 0)
+    window = GenoWindow()
     #read first line
     line = genoFile.readline()
     site = parseGenoLine(line,splitPhased)
@@ -1332,7 +1094,7 @@ def slidingSitesWindows(genoFile, windSites, overlap, maxDist = np.inf, minSites
         #build window
         while site.scaffold == window.scaffold and window.seqLen() < windSites and (window.seqLen() == 0 or site.position - window.firstPos() <= maxDist):
             #add this site to the window
-            window.addSite(GTs=[site.GTs[columns[name]] for name in names], position=site.position)
+            window.addSite(GTs=[site.GTs[nameIndices[name]] for name in names], position=site.position)
             #read next line
             line = genoFile.readline()
             site = parseGenoLine(line,splitPhased)
@@ -1357,7 +1119,7 @@ def slidingSitesWindows(genoFile, windSites, overlap, maxDist = np.inf, minSites
             else:
                 #if its one we want to analyse, start new window
                 if (not include and not exclude) or (include and site.scaffold in include) or (exclude and site.scaffold not in exclude):
-                    window = SitesWindow(scaffold = site.scaffold, names = names, ID = windowsDone + 1)
+                    window = GenoWindow(scaffold = site.scaffold, names = names, ID = windowsDone + 1)
                 
                 #if its a scaf we don't want, were going to read lines until we're on one we do want
                 else:
@@ -1376,7 +1138,7 @@ def slidingSitesWindows(genoFile, windSites, overlap, maxDist = np.inf, minSites
             else:
                 #if its one we want to analyse, start new window
                 if (not include and not exclude) or (include and site.scaffold in include) or (exclude and site.scaffold not in exclude):
-                    window = SitesWindow(scaffold = site.scaffold, names = names, ID = windowsDone + 1)
+                    window = GenoWindow(scaffold = site.scaffold, names = names, ID = windowsDone + 1)
                 
                 #if its a scaf we don't want, were going to read lines until we're on one we do want
                 else:
@@ -1385,28 +1147,29 @@ def slidingSitesWindows(genoFile, windSites, overlap, maxDist = np.inf, minSites
                     
                         line = genoFile.readline()
                         site = parseGenoLine(line,splitPhased)
-
         
-            
         #if we've reached the end of the file, break
         if len(line) <= 1:
             break
 
 
 #window generator function using pre-defined coordinates
-def predefinedCoordWindows(genoFile, windCoords, names = None, splitPhased=False, skipDeepcopy = False):
+def predefinedCoordWindows(genoFile, windCoords, names = None, splitPhased=False, ploidy=None, skipDeepcopy = False):
     #get the order of scaffolds
     allScafs = [w[0] for w in windCoords]
     scafs = sorted(set(allScafs), key=lambda x: allScafs.index(x))
     #get file headers
     headers = genoFile.readline().split()
     allNames = headers[2:]
-    if not names: names = allNames
+    if names is None: names = allNames
     if splitPhased:
+        if ploidy is None: ploidy = [2]*len(allNames)
+        ploidyDict = dict(zip(allNames, ploidy))
         #if splitting phased, we need to split names too
-        allNames=[name+"_"+x for name in allNames for x in ["A","B"]]
-        names=[name+"_"+x for name in names for x in ["A","B"]]
-    columns = dict(zip(names, [allNames.index(name) for name in names])) # records file column for each name
+        allNames = [n + "_" + letter for n in allNames for letter in string.ascii_uppercase[:ploidyDict[n]]]
+        names = [n + "_" + letter for n in names for letter in string.ascii_uppercase[:ploidyDict[n]]]
+    #indices of samples
+    nameIndices = dict(zip(names, [allNames.index(name) for name in names])) # records file column for each name
     #window counter
     w = 0
     window = None
@@ -1418,9 +1181,9 @@ def predefinedCoordWindows(genoFile, windCoords, names = None, splitPhased=False
         
         #make new window, or if on same scaf just slide it
         if window and window.scaffold == windCoords[w][0]:
-            window.slide(newStart = windCoords[w][1], newEnd = windCoords[w][2])
+            window.slide(newLimits=[windCoords[w][1],windCoords[w][2]])
             window.ID = w
-        else: window = CoordWindow(scaffold = windCoords[w][0], start=windCoords[w][1], end=windCoords[w][2], names = names, ID = w)
+        else: window = GenoWindow(scaffold = windCoords[w][0], limits=[windCoords[w][1],windCoords[w][2]], names = names, ID = w)
         
         #now we need to check that our line in the genome is in a good position
         #if its above the current window - keep reading
@@ -1436,14 +1199,14 @@ def predefinedCoordWindows(genoFile, windCoords, names = None, splitPhased=False
                     site = parseGenoLine(line,splitPhased)
         
         #if we're on the right scaffold but abve thwe windiow, keep reading
-        while site.scaffold == window.scaffold and site.position < window.start:
+        while site.scaffold == window.scaffold and site.position < window.limits[0]:
             line = genoFile.readline()
             site = parseGenoLine(line,splitPhased)
         
         #if we are in a window - build it
-        while site.scaffold == window.scaffold and window.start <= site.position <= window.end:
+        while site.scaffold == window.scaffold and window.limits[0] <= site.position <= window.limits[1]:
             #add this site to the window
-            window.addSite(GTs=[site.GTs[columns[name]] for name in names], position=site.position)
+            window.addSite(GTs=[site.GTs[nameIndices[name]] for name in names], position=site.position)
             #read next line
             line = genoFile.readline()
             site = parseGenoLine(line,splitPhased)
@@ -1462,16 +1225,19 @@ def predefinedCoordWindows(genoFile, windCoords, names = None, splitPhased=False
 
 #function to read blocks of n lines
 #sliding window generator function
-def nonOverlappingSitesWindows(genoFile, windSites, names = None, splitPhased=False, include = None, exclude = None):
+def nonOverlappingSitesWindows(genoFile, windSites, names = None, splitPhased=False, ploidy=None, include = None, exclude = None):
     #get file headers
     headers = genoFile.readline().split()
     allNames = headers[2:]
-    if not names: names = allNames
+    if names is None: names = allNames
     if splitPhased:
+        if ploidy is None: ploidy = [2]*len(allNames)
+        ploidyDict = dict(zip(allNames, ploidy))
         #if splitting phased, we need to split names too
-        allNames=[name+"_"+x for name in allNames for x in ["A","B"]]
-        names=[name+"_"+x for name in names for x in ["A","B"]]
-    columns = dict(zip(names, [allNames.index(name) for name in names])) # records site column for each name
+        allNames = [n + "_" + letter for n in allNames for letter in string.ascii_uppercase[:ploidyDict[n]]]
+        names = [n + "_" + letter for n in names for letter in string.ascii_uppercase[:ploidyDict[n]]]
+    #indices of samples
+    nameIndices = dict(zip(names, [allNames.index(name) for name in names])) # records file column for each name
     #blocks counter
     windowsDone = 0
     #initialise an empty block
@@ -1483,7 +1249,7 @@ def nonOverlappingSitesWindows(genoFile, windSites, names = None, splitPhased=Fa
         #initialise window
         #if its a scaffold we want to analyse, start new window
         if (not include and not exclude) or (include and site.scaffold in include) or (exclude and site.scaffold not in exclude):
-            window = SitesWindow(scaffold = site.scaffold, names = names, ID = windowsDone + 1)
+            window = GenoWindow(scaffold = site.scaffold, names = names, ID = windowsDone + 1)
             
         #if its a scaf we don't want, were going to read lines until we're on one we do want
         else:
@@ -1497,7 +1263,7 @@ def nonOverlappingSitesWindows(genoFile, windSites, names = None, splitPhased=Fa
         #build window
         while window and site.scaffold == window.scaffold and window.seqLen() < windSites:
             #add this site to the window
-            window.addSite(GTs=[site.GTs[columns[name]] for name in names], position=site.position)
+            window.addSite(GTs=[site.GTs[nameIndices[name]] for name in names], position=site.position)
             #read next line
             line = genoFile.readline()
             site = parseGenoLine(line,splitPhased)
@@ -1514,22 +1280,24 @@ def nonOverlappingSitesWindows(genoFile, windSites, names = None, splitPhased=Fa
 
 
 #function to read entire genoFile into a window-like object
-def parseGenoFile(genoFile, names = None, includePositions = False, splitPhased=False, headerLine = None):
+def parseGenoFile(genoFile, names = None, includePositions = False, splitPhased=False, ploidy=None, headerLine = None):
     #get file headers
-    headers = genoFile.readline().split() if headerLine is None else headerLine.split()
+    headers = genoFile.readline().split()
     allNames = headers[2:]
-    if not names: names = allNames
+    if names is None: names = allNames
     if splitPhased:
+        if ploidy is None: ploidy = [2]*len(allNames)
+        ploidyDict = dict(zip(allNames, ploidy))
         #if splitting phased, we need to split names too
-        allNames=[name+"_"+x for name in allNames for x in ["A","B"]]
-        names=[name+"_"+x for name in names for x in ["A","B"]]
-    columns = dict(zip(names, [allNames.index(name) for name in names])) # records site column for each name
+        allNames = [n + "_" + letter for n in allNames for letter in string.ascii_uppercase[:ploidyDict[n]]]
+        names = [n + "_" + letter for n in names for letter in string.ascii_uppercase[:ploidyDict[n]]]
+    #indices of samples
+    nameIndices = dict(zip(names, [allNames.index(name) for name in names])) # records file column for each name
     #initialise an empty window
-    window = SimpleWindow(names = names)
+    window = GenoWindow(names = names)
     for line in iter(genoFile.readline,''):
         site = parseGenoLine(line,splitPhased)
-        pos = site.position if includePositions else None
-        window.addSite(GTs=[site.GTs[columns[name]] for name in names], position=pos)
+        window.addSite(GTs=[site.GTs[nameIndices[name]] for name in names], position=site.position, ignorePosition= not includePositions)
     
     return window
 
@@ -1544,9 +1312,10 @@ def subset(things,subLen):
     return [things[starts[i]:ends[i]] for i in range(len(starts))]
 
 
-def makeAlnString(names, seqs, format="phylip", lineLen=None):
+def makeAlnString(names=None, seqs=None, seqDict=None, format="phylip", lineLen=None):
     assert format=="phylip" or format=="fasta"
-    assert len(names) == len(seqs)
+    if seqDict: names, seqs = zip(*seqDict.items())
+    else: assert len(names) == len(seqs)
     seqs = ["".join(s) for s in seqs]
     output = []
     nSamp = len(names)
