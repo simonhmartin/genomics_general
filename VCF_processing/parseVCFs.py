@@ -11,18 +11,24 @@ from time import sleep
 
 ##################################################
 
-def parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, skipIndels, missing, ploidy, outSep):
+def parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, skipIndels, missing, ploidy, outSep, verbose):
     n = len(fileNames)
     sitesGenerators = [parseVCF.tabixSites(fileNames[x], scaffold, start, end, headData[x].mainHead) for x in range(n)]
-
+    
     currentSites = []
-    for g in sitesGenerators:
-        try: currentSites.append(g.next())
-        except: currentSites.append(None) 
+    for x in range(n):
+        try: currentSites.append(sitesGenerators[x].next())
+        except:
+            sys.stderr.write("WARNING empty window: " + fileNames[x] + " " + scaffold + " " + str(start) + "-" + str(end) + "\n")
+            currentSites.append(None) 
     
     outLines = []
     
+    sitesConsidered = 0
+    linesParsed = 0
+    
     for pos in xrange(start,end+1):
+        sitesConsidered+=1
         filesRepresented = 0
         outObjects = [scaffold, str(pos)]
         for x in xrange(n):
@@ -41,13 +47,15 @@ def parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, 
         #so now we've created the output, but need to decide if we can write it
         if method == "all" or (method == "union" and filesRepresented >= 1) or (method == "intersect" and filesRepresented == n):
             outLines.append(outSep.join(outObjects) + "\n")
+            linesParsed+=1
+    if verbose: sys.stderr.write(str(sitesConsidered) + " sites considered. " + str(linesParsed) + " lines parsed.\n")
     return outLines #and thats it. Move on to the next site in the genome
 
 
-def parseAndMergeWrapper(inQueue, outQueue, fileNames, headData, gtFilters, method, skipIndels, missing, ploidy, outSep):
+def parseAndMergeWrapper(inQueue, outQueue, fileNames, headData, gtFilters, method, skipIndels, missing, ploidy, outSep, verbose):
     while True:
         windowNumber,scaffold,start,end = inQueue.get() # retrieve window data
-        parsedLines = parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, skipIndels, missing, ploidy, outSep)
+        parsedLines = parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, skipIndels, missing, ploidy, outSep, verbose)
         outQueue.put((windowNumber, parsedLines,))
 
 
@@ -223,7 +231,7 @@ the function we call is actually a wrapper for another function.(s)
 This one reads from the pod queue, passes each line some analysis function(s), gets the results and sends to the result queue'''
 for x in range(args.threads):
     worker = Process(target=parseAndMergeWrapper,args=(inQueue, outQueue, infiles, headData, gtFilters, args.method,
-                                                       args.skipIndels, args.missing, args.ploidy, outSep))
+                                                       args.skipIndels, args.missing, args.ploidy, outSep, verbose,))
     worker.daemon = True
     worker.start()
 
@@ -261,7 +269,6 @@ for scaf in scafs:
         if args.test and windowsQueued == 10: break
 
 
-print >> sys.stderr, "\nWriting final results...\n"
 while resultsWritten < windowsQueued:
   sleep(1)
 
