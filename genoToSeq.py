@@ -47,12 +47,15 @@ if not args.separateFiles:
 
 #############################
 
+samples = args.samples.split(",") if args.samples else None
+
 # if cating all contigs, just parse file and write
 if args.mode == "cat":
     #read file into window like object
-    window = genomics.parseGenoFile(genoFile, names=args.samples.split(","), splitPhased=args.splitPhased)
+    window = genomics.parseGenoFile(genoFile, names=samples, splitPhased=args.splitPhased)
     #write
-    seqFile.write(genomics.makeAlnString(window.names,window.seqs,format = args.format))
+    seqDict = window.seqDict()
+    seqFile.write(genomics.makeAlnString(window.names,[seqDict[name] for name in window.names],format = args.format))
     genoFile.close()
     seqFile.close()
     exit()
@@ -104,7 +107,8 @@ if args.mode == "windows" or args.mode == "contigs":
         else: seqNames = window.names
         
         #write
-        seqFile.write(genomics.makeAlnString(seqNames,window.seqs,format = args.format))
+        seqDict = window.seqDict()
+        seqFile.write(genomics.makeAlnString(seqNames,[seqDict[name] for name in seqNames],format = args.format))
         
         if args.separateFiles: seqFile.close()
 
