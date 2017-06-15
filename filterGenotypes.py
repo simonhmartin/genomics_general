@@ -17,6 +17,7 @@ from time import sleep
 def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,headers,include,exclude,samples,minCalls,minPopCalls,
                     minAlleles,maxAlleles,minVarCount,maxHet,minFreq,maxFreq,
                     HWE_P,HWE_side,popDict,ploidyDict,fixed,forcePloidy,thinDist):
+    sampleIndices = [headers.index(s) for s in samples]
     while True:
         podNumber,inPod = inQueue.get()
         if verbose: print >> sys.stderr, "Pod", podNumber, "received for analysis."
@@ -27,7 +28,7 @@ def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,headers,in
             #if verbose: print >> sys.stderr, "Analysing line", lineNumber
             objects = line.split()
             if (include and objects[0] not in include) or (exclude and objects[0] in exclude): continue
-            site = genomics.GenomeSite(genotypes=objects[2:], sampleNames=headers[2:], popDict=popDict,
+            site = genomics.GenomeSite(genotypes=[objects[i] for i in sampleIndices], sampleNames=samples, popDict=popDict,
                                        ploidyDict=ploidyDict, genoFormat=inputGenoFormat, forcePloidy=forcePloidy)
             goodSite = True
             if thinDist:
@@ -122,12 +123,13 @@ parser.add_argument("-o", "--outfile", help="Output csv file", action = "store")
 parser.add_argument("-t", "--threads", help="Analysis threads", type=int, action = "store", default = 1)
 parser.add_argument("--verbose", help="Verbose output.", action = "store_true")
 
-parser.add_argument("-if", "--inputGenoFormat", help="Genotype format [otherwise will be inferred (slower)]", action = "store",choices = ["phased","diplo","alleles"])
+parser.add_argument("-if", "--inputGenoFormat", help="Genotype format [otherwise will be inferred (slower)]", action = "store",choices = ["phased","diplo","alleles"], default="phased")
 parser.add_argument("-of", "--outputGenoFormat", help="Genotype format for output", action = "store", choices = ("phased","diplo","alleles","coded","count"), default = "phased")
 
 
 #specific samples
 parser.add_argument("-s", "--samples", help="sample names (separated by commas)", action='store')
+parser.add_argument("--excludeSamples", help="sample names (separated by commas)", action='store')
 #populations
 parser.add_argument("-p", "--pop", help="Pop name and optionally sample names (separated by commas)", action='append', nargs="+", metavar=("popName","[samples]"))
 parser.add_argument("--popsFile", help="Optional file of sample names and populations", action = "store", required = False)
@@ -172,9 +174,6 @@ args = parser.parse_args()
 
 infile = args.infile
 outfile = args.outfile
-
-samples = args.samples
-if samples: samples = samples.split(",")
 
 include = []
 exclude = []
@@ -267,14 +266,23 @@ headers = headLine.split()
 
 allSamples = headers[2:]
 
-if samples:
+samples = args.samples.split(",") if args.samples else None
+exSamples = args.excludeSamples.split(",") if args.excludeSamples else []
+
+if samples is not None:
     for sample in samples:
         assert sample in allSamples, "Sample name not in header: " + sample
 elif args.pop and not args.keepAllSamples:
-    samples = sorted(list(set([i for j in popDict.values() for i in j])))
+    samples = [i for j in popDict.values() for i in j]
+    assert len(set(samples)) == len(samples), "Populations cannot share the same sample"
 else: samples = allSamples
 
+samples = [s for s in samples if s not in exSamples]
+
+if minCalls: assert minCalls <= len(samples), "Minimum calls is greater than number of specified samples."
+
 for popName in popNames:
+    popDict[popName] = [s for s in popDict[popName] if s not in exSamples]
     for sample in popDict[popName]:
         assert sample in allSamples, "Sample name not in header: " + sample
 
