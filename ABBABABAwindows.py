@@ -21,7 +21,7 @@ def ABBABABA_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData,
   while True:
     windowNumber,window = windowQueue.get() # retrieve window
     if windType == "coordinate" or windType == "predefined":
-        scaf,start,end,mid,sites = (window.scaffold, window.start, window.end, window.midPos(),window.seqLen())
+        scaf,start,end,mid,sites = (window.scaffold, window.limits[0], window.limits[1], window.midPos(),window.seqLen())
     else: scaf,start,end,mid,sites = (window.scaffold, window.firstPos(), window.lastPos(),window.midPos(),window.seqLen())
     sitesUsed = np.NaN
     if sites >= minSites:
@@ -165,7 +165,6 @@ minData = args.minData
 assert 0 <= minData <= 1, "minimum data per site must be between 0 and 1."
 
 #file info
-genoFileName = args.genoFile
 genoFormat = args.genoFormat
 
 outFileName = args.outFile
@@ -208,12 +207,11 @@ sampleData = genomics.SampleData(popNames = popNames, popInds = popInds, ploidyD
 
 #open files
 
-if genoFileName[-3:] == ".gz":
-  genoFile = gzip.open(genoFileName, "r")
-else:
-  genoFile = open(genoFileName, "r")
+if args.genoFile: genoFile = gzip.open(args.genoFile, "r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r")
+else: genoFile = sys.stdin
 
-outFile = open(outFileName, "w")
+if args.outFile: outFile = gzip.open(args.outFile, "w") if args.outFile.endswith(".gz") else open(args.outFile, "w")
+else: outFile = sys.stdout
 
 outFile.write("scaffold,start,end,mid,sites,sitesUsed,ABBA,BABA,D,fd\n")
 
