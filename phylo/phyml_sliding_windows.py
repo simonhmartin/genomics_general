@@ -88,32 +88,32 @@ def phymlCrossVal(seqArray0, seqArray1, indNames, model, opt, phyml, prefix = ""
 
 '''A function that reads from the window queue, calls sume other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using'''
-def phyml_wrapper(windowQueue, resultQueue, windType, genoFormat, model, opt, outgroup, phyml, minSites, minPerInd, maxLDphase=False, bootstraps=0, crossVal=False, test = False):
+def phyml_wrapper(windowQueue, resultQueue, windType, genoFormat, model, opt, outgroup, phyml, minSites, minPerInd, minSNPs=None,
+                  maxLDphase=False, bootstraps=0, crossVal=False, test = False):
     while True:
         windowNumber,window = windowQueue.get()
         Nsites = window.seqLen()
         if test or verbose: print >> sys.stderr, "Window", windowNumber, "received for analysis, length:", Nsites
-        if windType == "coordinate" or windType == "predefined": scaf,start,end,mid = (window.scaffold, window.start, window.end, window.midPos())
+        if windType == "coordinate" or windType == "predefined": scaf,start,end,mid = (window.scaffold, window.limits[0], window.limits[1], window.midPos())
         else: scaf,start,end,mid = (window.scaffold, window.firstPos(), window.lastPos(), window.midPos())
         prefix = scaf + "_" + str(start) + "_" + str(end) + "_"
         if Nsites >= minSites:
             aln = genomics.genoToAlignment(window.seqDict(), genoFormat = genoFormat)
-            seqNames = aln.names
-            seqs = aln.array
-            if outgroup:
-                for seqName in seqNames:
+            if len(outgroup) >= 1:
+                for seqName in aln.names:
                     if seqName in outgroup: seqName +="*"
+            
             sitesPerInd = aln.seqNonNan()
-            if min(sitesPerInd) >= minPerInd:
+            if min(sitesPerInd) >= minPerInd and (minSNPs is None or len(aln.varSites(indices=np.array([i for i in range(aln.N) if aln.sampleNames[i] not in outgroup]))) >= minSNPs):
                 if maxLDphase: aln = genomics.maxLDphase(aln)
                 #if enough sites get tree
-                tree,lnL = phymlTree(aln.array,seqNames,model,opt,phyml,prefix,tmpDir=tmpDir, test = test, log = log)
+                tree,lnL = phymlTree(aln.array,aln.names,model,opt,phyml,prefix,tmpDir=tmpDir, test = test, log = log)
                 bsTrees = []
                 for b in range(bootstraps):
                     #get bootstrap trees if necessary
                     positions = np.random.choice(range(Nsites), Nsites, replace=True)
                     newArr = aln.array[:,positions]
-                    bsTree,bslnL = phymlTree(newArr,seqNames,model,opt,phyml,prefix + str(b) + "_",tmpDir=tmpDir, test = test, log = log)
+                    bsTree,bslnL = phymlTree(newArr,aln.names,model,opt,phyml,prefix + str(b) + "_",tmpDir=tmpDir, test = test, log = log)
                     bsTrees.append(bsTree)
                 trees = [tree] + bsTrees
                 if crossVal:
@@ -188,6 +188,7 @@ parser.add_argument("--windType", help="Type of windows to make", action = "stor
 parser.add_argument("-w", "--windSize", help="Window size in bases", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-M", "--minSites", help="Minumum good sites per window", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-Mi", "--minPerInd", help="Minumum good sites per individual", type=int, action = "store", required = False, metavar="sites")
+parser.add_argument("-Ms", "--minSNPs", help="Minumum number of SNPs", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-S", "--stepSize", help="Step size for coordinate sliding window", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-O", "--overlap", help="Overlap for sites sliding window", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-D", "--maxDist", help="Maximum span distance for sites window", type=int, action = "store", required = False)
@@ -262,8 +263,6 @@ minSites = args.minSites
 if not minSites: minSites = windSize
 
 minPerInd = args.minPerInd
-if not minPerInd: minPerInd = minSites
-
 
 genoFormat = args.genoFormat
 
@@ -276,12 +275,8 @@ else: indNames = None
 
 if args.outgroup:
     outgroup = args.outgroup.split(",")
-    if genoFormat == "phased":
-        outgroup = [i + "_" + x for i in outgroup for x in ("A","B")]
     if test or verbose: print >> sys.stderr, "outgroups:", " ".join(outgroup)
-
-else: outgroup = None
-
+else: outgroup = []
 
 prefix = args.prefix
 
@@ -365,7 +360,7 @@ the function we call is actually a wrapper for another function.(s) This one rea
 for x in range(threads):
     worker = Process(target=phyml_wrapper, args = (windowQueue, resultQueue, windType, genoFormat,
                                                    model, opt, outgroup, phyml, minSites, minPerInd,
-                                                   args.maxLDphase, bootstraps, args.crossVal, test,))
+                                                   args.minSNPs, args.maxLDphase, bootstraps, args.crossVal, test,))
     worker.daemon = True
     worker.start()
     print >> sys.stderr, "started worker", x
