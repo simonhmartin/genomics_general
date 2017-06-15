@@ -20,17 +20,22 @@ from time import sleep
 
 '''A function that reads from the window queue, calls some other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using. This is the function that will run on each of the N cores.'''
-def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, minSites, stats):
+def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, minSites, stats, doPops, skipPairs, indHet):
     while True:
         windowNumber,window = windowQueue.get() # retrieve window
         if windType == "coordinate" or windType == "predefined":
-            scaf,start,end,mid,sites = (window.scaffold, window.start, window.end, window.midPos(),window.seqLen())
+            scaf,start,end,mid,sites = (window.scaffold, window.limits[0], window.limits[1], window.midPos(),window.seqLen())
         else: scaf,start,end,mid,sites = (window.scaffold, window.firstPos(), window.lastPos(),window.midPos(),window.seqLen())
         if sites >= minSites:
             isGood = True
             #make alignment object
             Aln = genomics.genoToAlignment(window.seqDict(), sampleData, genoFormat = genoFormat)
-            statsDict = genomics.popDiv(Aln)
+            statsDict = {}
+            if doPops: statsDict.update(genomics.popDiv(Aln, doPairs = not skipPairs))
+            if indHet:
+                hetDict = Aln.sampleHet()
+                for key in hetDict.keys(): hetDict["het_" + key] = hetDict.pop(key)
+                statsDict.update(hetDict)
             values = [round(statsDict[stat], 4) for stat in stats]
         else:
             isGood = False
@@ -102,9 +107,12 @@ parser.add_argument("-D", "--maxDist", help="Maximum span distance for sites win
 parser.add_argument("--windCoords", help="Window coordinates file (scaffold start end)", required = False)
 
 parser.add_argument("-p", "--population", help="Pop name and optionally sample names (separated by commas)",
-                    required = True, action='append', nargs="+", metavar=("popName","[samples]"))
+                    required = False, action='append', nargs="+", metavar=("popName","[samples]"))
 parser.add_argument("--popsFile", help="Optional file of sample names and populations", action = "store", required = False)
+parser.add_argument("--samples", help="Samples to include for individual analysis", action = "store", metavar = "sample names")
 parser.add_argument("--haploid", help="Samples that are haploid (comma separated)", action = "store", metavar = "sample names")
+parser.add_argument("--skipPairs", help="Do not do pairwise statistics", action = "store_true")
+parser.add_argument("--indHet", help="Calculate individual heterozygosity", action = "store_true")
 
 parser.add_argument("-g", "--genoFile", help="Input genotypes file", required = False)
 parser.add_argument("-o", "--outFile", help="Results file", required = False)
@@ -151,7 +159,6 @@ minSites = args.minSites
 if not minSites: minSites = windSize
 
 #file info
-genoFileName = args.genoFile
 genoFormat = args.genoFormat
 
 outFileName = args.outFile
@@ -164,30 +171,45 @@ threads = args.Threads
 verbose = args.verbose
 
 
-############## parse populations
+############## parse samples and populations
 popNames = []
 popInds = []
-for p in args.population:
-    popNames.append(p[0])
-    if len(p) > 1: popInds.append(p[1].split(","))
-    else: popInds.append([])
+allInds = []
+if args.population is not None:
+    for p in args.population:
+        popNames.append(p[0])
+        if len(p) > 1: popInds.append(p[1].split(","))
+        else: popInds.append([])
 
-if args.popsFile:
-    with open(args.popsFile, "r") as pf: popDict = dict([ln.split() for ln in pf])
-    for ind in popDict.keys():
-        try: popInds[popNames.index(popDict[ind])].append(ind)
-        except: pass
+    if args.popsFile:
+        with open(args.popsFile, "r") as pf: popDict = dict([ln.split() for ln in pf])
+        for ind in popDict.keys():
+            try: popInds[popNames.index(popDict[ind])].append(ind)
+            except: pass
 
-for p in popInds: assert len(p) >= 1, "All populations must be represented by at least one sample."
+    for p in popInds: assert len(p) >= 1, "All populations must be represented by at least one sample."
 
-allInds = list(set([i for p in popInds for i in p]))
+    allInds += list(set([i for p in popInds for i in p]))
+else: doPops = False
+
+if args.samples is not None:
+    allInds = list(set(allInds + args.samples.split(",")))
+    args.indHet = True
+
+assert doPops or args.indHet, "Populations not specified, and individual het not requested. Nothing to do."
+
+#if populations and samples not specified, just get all sample names from file
+if len(allInds) == 0:
+    with gzip.open(args.genoFile, "r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r") as gf:
+        allInds = gf.readline().split()[2:]
 
 ploidyDict = dict(zip(allInds,[2]*len(allInds)))
+
 if args.haploid:
     for sample in args.haploid.split(","):
         ploidyDict[sample] = 1
 
-sampleData = genomics.SampleData(popNames = popNames, popInds = popInds, ploidyDict = ploidyDict)
+sampleData = genomics.SampleData(indNames = allInds, popNames = popNames, popInds = popInds, ploidyDict = ploidyDict)
 
 ############################################################################################################################################
 
@@ -207,10 +229,14 @@ outFile.write("scaffold,start,end,mid,sites,")
 
 stats = []
 
-stats += ["pi_" + n for n in popNames]
-stats += ["dxy_" + x + "_" + y for x,y in itertools.combinations(popNames, 2)]
-stats += ["Fst_" + x + "_" + y for x,y in itertools.combinations(popNames, 2)]
+if args.indHet: stats += ["het_" + n for n in allInds]
 
+if doPops:
+    stats += ["pi_" + n for n in popNames]
+
+    if not args.skipPairs:
+        stats += ["dxy_" + x + "_" + y for x,y in itertools.combinations(popNames, 2)]
+        stats += ["Fst_" + x + "_" + y for x,y in itertools.combinations(popNames, 2)]
 
 outFile.write(",".join(stats) + "\n")
 
@@ -255,7 +281,7 @@ writeQueue = SimpleQueue()
 of course these will only start doing anything after we put data into the line queue
 the function we call is actually a wrapper for another function.(s) This one reads from the line queue, passes to some analysis function(s), gets the results and sends to the result queue'''
 for x in range(threads):
-  worker = Process(target=stats_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, sampleData, minSites, stats,))
+  worker = Process(target=stats_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, sampleData, minSites, stats, doPops, args.skipPairs, args.indHet,))
   worker.daemon = True
   worker.start()
   print >> sys.stderr, "started worker", x
