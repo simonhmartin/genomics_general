@@ -574,7 +574,8 @@ def genoToAlignment(seqDict, sampleData=None, genoFormat = "diplo"):
     for indName in seqDict.keys():
         seqList = splitSeq(seqDict[indName], genoFormat)
         ploidy = sampleData.ploidy[indName] if indName in sampleData.ploidy else len(seqList)
-        if ploidy is not None: assert len(seqList) == ploidy, "Sample ploidy doesn't match genotype"
+        #print seqList
+        if ploidy is not None: assert len(seqList) == ploidy, "Sample ploidy (" + str(ploidy) + ") doesn't match number of sequences (" + str(len(seqList)) + ")"
         if ploidy != 1:
             haploidSeqs += seqList
             seqNames += [indName + "_" + letter for letter in string.ascii_uppercase[:ploidy]]
@@ -912,9 +913,10 @@ def popSiteFreqs(aln, minData = 0):
 class GenoWindow:
     def __init__(self, scaffold = None, limits=[-np.inf,np.inf],sites = None, names = None, positions = None, ID = None):
         if sites is not None and positions is not None:
-            assert len(set([len(site) for site in sites])) == 1, "Number of genotypes per site must be equal."
-            assert len(sites[0]) == len(names), "Number of names must match number of genotypes per site."
-            assert len(positions) == len(sites), "Positions must match number of sites"
+            if not len(sites) == len(positions) == 0:
+                assert len(set([len(site) for site in sites])) == 1, "Number of genotypes per site must be equal."
+                assert len(sites[0]) == len(names), "Number of names must match number of genotypes per site."
+                assert len(positions) == len(sites), "Positions must match number of sites"
         else:
             sites = []
             positions = []
