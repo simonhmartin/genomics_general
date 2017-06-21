@@ -226,7 +226,7 @@ if args.outFile: outFile = gzip.open(args.outFile, "w") if args.outFile.endswith
 else: outFile = sys.stdout
 
 if not args.addWindowID: outFile.write("scaffold,start,end,mid,sites,")
-else: not args.addWindowID: outFile.write("windowID,scaffold,start,end,mid,sites,")
+else: outFile.write("windowID,scaffold,start,end,mid,sites,")
 
 ############################################################################################################################################
 
