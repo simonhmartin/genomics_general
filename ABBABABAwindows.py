@@ -17,29 +17,32 @@ from time import sleep
 
 '''A function that reads from the window queue, calls some other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using. This is the function that will run on each of the N cores.'''
-def ABBABABA_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, P1, P2, P3, O, minData, minSites, stats = ["ABBA","BABA","D","fd"]):
-  while True:
-    windowNumber,window = windowQueue.get() # retrieve window
-    if windType == "coordinate" or windType == "predefined":
-        scaf,start,end,mid,sites = (window.scaffold, window.limits[0], window.limits[1], window.midPos(),window.seqLen())
-    else: scaf,start,end,mid,sites = (window.scaffold, window.firstPos(), window.lastPos(),window.midPos(),window.seqLen())
-    sitesUsed = np.NaN
-    if sites >= minSites:
-        #make alignment object
-        Aln = genomics.genoToAlignment(window.seqDict(), sampleData, genoFormat = genoFormat)
-        statsDict = genomics.ABBABABA(Aln, P1, P2, P3, O, minData)
-        sitesUsed = statsDict["sitesUsed"]
-        if sitesUsed >= minSites:
-            isGood = True
-            values = [round(statsDict[stat],4) for stat in stats]
+def ABBABABA_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, P1, P2, P3, O, minData, minSites,
+                     addWindowID=False, stats = ["ABBA","BABA","D","fd"]):
+    while True:
+        windowNumber,window = windowQueue.get() # retrieve window
+        if windType == "coordinate" or windType == "predefined":
+            scaf,start,end,mid,sites = (window.scaffold, window.limits[0], window.limits[1], window.midPos(),window.seqLen())
+        else: scaf,start,end,mid,sites = (window.scaffold, window.firstPos(), window.lastPos(),window.midPos(),window.seqLen())
+        sitesUsed = np.NaN
+        if sites >= minSites:
+            #make alignment object
+            Aln = genomics.genoToAlignment(window.seqDict(), sampleData, genoFormat = genoFormat)
+            statsDict = genomics.ABBABABA(Aln, P1, P2, P3, O, minData)
+            sitesUsed = statsDict["sitesUsed"]
+            if sitesUsed >= minSites:
+                isGood = True
+                values = [round(statsDict[stat],4) for stat in stats]
+            else:
+                isGood = False
+                values = [np.NaN]*len(stats)
         else:
             isGood = False
             values = [np.NaN]*len(stats)
-    else:
-        isGood = False
-        values = [np.NaN]*len(stats)
-    resultString = ",".join([str(x) for x in [scaf,start,end,mid,sites,sitesUsed] + values])
-    resultQueue.put((windowNumber, resultString, isGood))
+        results = [] if not addWindowID else [window.ID]
+        results += [scaf,start,end,mid,sites,sitesUsed] + values
+        resultString = ",".join([str(x) for x in results])
+        resultQueue.put((windowNumber, resultString, isGood))
 
 
 '''a function that watches the result queue and sorts results. This should be a generic funcion regardless of the result, as long as the first object is the result number, and this increases consecutively.'''
@@ -116,14 +119,15 @@ parser.add_argument("-O", "--outgroup", help="Pop name and optionally sample nam
 parser.add_argument("--popsFile", help="Optional file of sample names and populations", action = "store", required = False)
 parser.add_argument("--haploid", help="Samples that are haploid (comma separated)", action = "store", metavar = "sample names")
 
-parser.add_argument("-g", "--genoFile", help="Input genotypes file", required = True)
-parser.add_argument("-o", "--outFile", help="Results file", required = True)
+parser.add_argument("-g", "--genoFile", help="Input genotypes file", required = False)
+parser.add_argument("-o", "--outFile", help="Results file", required = False)
 parser.add_argument("--exclude", help="File of scaffolds to exclude", required = False)
 parser.add_argument("--include", help="File of scaffolds to analyse", required = False)
 parser.add_argument("-f", "--genoFormat", help="Format of genotypes in genotypes file", action='store', choices = ("phased","pairs","haplo","diplo"), required = True)
 
 parser.add_argument("-T", "--Threads", help="Number of worker threads for parallel processing", type=int, default=1, required = False, metavar="threads")
 parser.add_argument("--verbose", help="Verbose output", action="store_true")
+parser.add_argument("--addWindowID", help="Add window name or number as first column", action="store_true")
 parser.add_argument("--writeFailedWindows", help="Write output even for windows with too few sites.", action="store_true")
 
 
@@ -155,7 +159,10 @@ else:
     assert not args.stepSize,"Step size does not apply for predefined windows."
     assert not args.include,"You cannot only include specific scaffolds if using predefined windows."
     assert not args.exclude,"You cannot exclude specific scaffolds if using predefined windows."
-    with open(args.windCoords,"r") as wc: windCoords = tuple([(x,int(y),int(z),) for x,y,z in [line.split()[:3] for line in wc]])
+    with open(args.windCoords,"r") as wc: windCoords = [line.split()[:4] for line in wc]
+    for w in windCoords:
+        w[1] = int(w[1])
+        w[2] = int(w[2])
 
 minSites = args.minSites
 if not minSites: minSites = windSize
@@ -213,7 +220,8 @@ else: genoFile = sys.stdin
 if args.outFile: outFile = gzip.open(args.outFile, "w") if args.outFile.endswith(".gz") else open(args.outFile, "w")
 else: outFile = sys.stdout
 
-outFile.write("scaffold,start,end,mid,sites,sitesUsed,ABBA,BABA,D,fd\n")
+if not args.addWindowID: outFile.write("scaffold,start,end,mid,sites,sitesUsed,ABBA,BABA,D,fd\n")
+else: outFile.write("windowID,scaffold,start,end,mid,sites,sitesUsed,ABBA,BABA,D,fd\n")
 
 ##############################################################
 
@@ -257,7 +265,7 @@ of course these will only start doing anything after we put data into the line q
 the function we call is actually a wrapper for another function.(s) This one reads from the line queue, passes to some analysis function(s), gets the results and sends to the result queue'''
 for x in range(threads):
   worker = Process(target=ABBABABA_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, sampleData,
-                                                    popNames[0], popNames[1], popNames[2], popNames[3], minData, minSites,))
+                                                    popNames[0], popNames[1], popNames[2], popNames[3], minData, minSites, args.addWindowID))
   worker.daemon = True
   worker.start()
 

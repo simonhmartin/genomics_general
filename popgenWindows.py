@@ -20,7 +20,7 @@ from time import sleep
 
 '''A function that reads from the window queue, calls some other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using. This is the function that will run on each of the N cores.'''
-def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, minSites, stats, doPops, skipPairs, indHet):
+def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, minSites, stats, doPops, skipPairs, indHet, addWindowID=False):
     while True:
         windowNumber,window = windowQueue.get() # retrieve window
         if windType == "coordinate" or windType == "predefined":
@@ -40,7 +40,9 @@ def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, mi
         else:
             isGood = False
             values = [np.NaN]*len(stats)
-        resultString = ",".join([str(x) for x in [scaf,start,end,mid,sites] + values])
+        results = [] if not addWindowID else [window.ID]
+        results += [scaf,start,end,mid,sites] + values
+        resultString = ",".join([str(x) for x in results])
         resultQueue.put((windowNumber, resultString, isGood))
 
 
@@ -122,6 +124,7 @@ parser.add_argument("-f", "--genoFormat", help="Format of genotypes in genotypes
 
 parser.add_argument("-T", "--Threads", help="Number of worker threads for parallel processing", type=int, default=1, required = False, metavar="threads")
 parser.add_argument("--verbose", help="Verbose output", action="store_true")
+parser.add_argument("--addWindowID", help="Add window name or number as first column", action="store_true")
 parser.add_argument("--writeFailedWindows", help="Write output even for windows with too few sites.", action="store_true")
 
 
@@ -176,6 +179,7 @@ popNames = []
 popInds = []
 allInds = []
 if args.population is not None:
+    doPops = True
     for p in args.population:
         popNames.append(p[0])
         if len(p) > 1: popInds.append(p[1].split(","))
@@ -221,7 +225,8 @@ else: genoFile = sys.stdin
 if args.outFile: outFile = gzip.open(args.outFile, "w") if args.outFile.endswith(".gz") else open(args.outFile, "w")
 else: outFile = sys.stdout
 
-outFile.write("scaffold,start,end,mid,sites,")
+if not args.addWindowID: outFile.write("scaffold,start,end,mid,sites,")
+else: not args.addWindowID: outFile.write("windowID,scaffold,start,end,mid,sites,")
 
 ############################################################################################################################################
 
@@ -281,7 +286,8 @@ writeQueue = SimpleQueue()
 of course these will only start doing anything after we put data into the line queue
 the function we call is actually a wrapper for another function.(s) This one reads from the line queue, passes to some analysis function(s), gets the results and sends to the result queue'''
 for x in range(threads):
-  worker = Process(target=stats_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, sampleData, minSites, stats, doPops, args.skipPairs, args.indHet,))
+  worker = Process(target=stats_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, sampleData, minSites,
+                                                 stats, doPops, args.skipPairs, args.indHet,args.addWindowID))
   worker.daemon = True
   worker.start()
   print >> sys.stderr, "started worker", x
