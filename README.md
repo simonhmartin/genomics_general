@@ -1,9 +1,9 @@
-####This is a collection of scripts for a range of genomic data processing and analysis.
-####Below are notes about some useful tools.
+#### This is a collection of scripts for a range of genomic data processing and analysis.
+#### Below are notes about some useful tools.
 
 ___
 
-##Parsing VCF files
+## Parsing VCF files
 
 Most of my scripts use a processed `.vcf` format that I call `.geno`. This looks something like this:
 
@@ -17,24 +17,24 @@ Missing data is denoted as `N`, and phased and unphased genotypes are shown conv
 
 The script `parseVCF.py` in the `VCF_processing` directory, will convert vcf to this format. It has various options for filtering based on read depth, genotype quality or any other flag in the `FORMAT` column of the vcf.
 
-####Example command:
+#### Example command:
 
 ```bash
 python parseVCF.py -i input.vcf.gz --skipIndel --minQual 30 --gtf flag=DP min=5 | gzip > output.geno.gz
 ```
 ___
 
-##Diversity and divergence analyses in sliding windows
+## Diversity and divergence analyses in sliding windows
 
 The script `popgenWindows.py` computes some standard population genomic statistics in sliding windows:  *pi*,  *F*<sub>ST</sub> and *D<sub>XY</sub>*. It requires the script `genomics.py` to be present in the same directory, or in your Python path.
 
-####Example command
+#### Example command
 ```bash
 python popgenWindows.py -w 50000 -m 5000 -g input.geno.gz -o output.csv.gz -f phased -T 5 -p popA A1,A2,A3,A4 -p popB B1,B2,B3,B4,B6,B6 -p popC C1,C2
 ```
 `python popgenWindows.py -h` Will print a full list of command arguments.
 
-####Notes
+#### Notes
 
 Input is a `.geno` file as shown above. This can be gzipped (`.geno.gz`).
 Output is a `.csv`. If you add `.gz` it will be gzipped.
@@ -66,34 +66,34 @@ If some samples are haploid and others are diploid, you can use one of the diplo
 The script can run on multiple cores (`-T` flag). Try different numbers, as using too many can slow the script down (due to the difficulty in sorting the outputs coming from the different cores).
 
 ___
-##Compute ABBA-BABA statistics in sliding windows
+## Compute ABBA-BABA statistics in sliding windows
 
 The script `ABBABABAwindows.py` performs analyses described in [Martin et al. 2015, MBE](http://mbe.oxfordjournals.org/content/32/1/244.abstract?sid=a3d00925-b3fe-4214-b142-256739082832), compurting the *D* statistic and *f* estimators in windows across the genome. Like the script above, it requires `genomics.py`.
 
-####Example command
+#### Example command
 
 ```bash
 python ABBABABAwindows.py -g /zoo/disk1/shm45/vcf/set62/set62.chr21.DP5GQ30.AN100MAC1.diplo.gz -f diplo -o output.csv -w 100000 -m 5000 -s 100000 -p P1 A1,A2,A3,A4 -p P2 B1,B2,B3,B4 -p P3  C1,C2,C3,C4 -p O D1,D2,D3,D4 -T 10 --minData 0.5
 ```
 `python ABBABABAwindows.py -h` Will print a full list of command arguments.
 
-####Notes
+#### Notes
 This script shares several command arguments with the one above. And input formats are the same.
 
 Four populations, with the names `P1`, `P2`, `P3` and `O` are requied.
 
 ___
-##Make trees for sliding windows
+## Make trees for sliding windows
 
 Two scripts in the `phylo/` directory will make trees in sliding windows: `phymlWindows.py` and `raxmlWindows.py`. As the names suggest they use [Phyml](http://www.atgc-montpellier.fr/phyml/) and [RAxML](http://sco.h-its.org/exelixis/web/software/raxml/), respectively.
 
-####Example command
+#### Example command
 ```bash
 python phyml_sliding_windows.py -T 10 -g input.phased.geno.gz --prefix output.phyml_bionj.w50 -w 50 --windType sites --model GTR --genoFormat phased 
 ```
 `python phymlWindows.py -h` Will print a full list of command arguments.
 
-####Notes
+#### Notes
 Obvuously, you need to have Phyml (or RAxML) installed on your machine. You can direct the script to the location of the executable. I recommend using an unthreaded version, since each window tree will run very quickly.
 
 The window can be defined based on genomic coordinates (`--windType coord`) or the number of sites (`--windType sites`). Windows will not cross contig/scaffold boundaries.
