@@ -1,8 +1,9 @@
+#!/usr/bin/python
+
 import argparse
 import sys
 import gzip
 import numpy as np
-import itertools
 
 import genomics
 
@@ -130,13 +131,14 @@ for window in windowGenerator:
         outFile.write("\n")
     
     if windType == "coordinate" or windType == "predefined":
-        scaf,start,end,mid,sites = (window.scaffold, window.start, window.end, window.midPos(),window.seqLen())
+        scaf,start,end,mid,sites = (window.scaffold, window.limits[0], window.limits[1], window.midPos(),window.seqLen())
     else: scaf,start,end,mid,sites = (window.scaffold, window.firstPos(), window.lastPos(),window.midPos(),window.seqLen())
     
     outFile.write(",".join([scaf,str(start),str(end),str(mid),str(sites)]) + ",")
     
     if sites >= minSites:
-        numbers = window.seqs.astype(float)
+        numDict = window.seqDict()
+        numbers = np.array([numDict[name] for name in window.names], dtype = "float")
         outFile.write(",".join([",".join([str(x) for x in [np.mean(numbers[i,:]),
                                                            np.median(numbers[i,:]),
                                                            np.min(numbers[i,:]),
