@@ -1,12 +1,8 @@
 #functions for manipulating sequences and alignments, working with sliding windows, doing population genetics etx.
 
 import numpy as np
-import math
 from copy import deepcopy
-import string
-import time
-import itertools
-import re
+import sys, string, time, re, math, itertools
 
 
 ##################################################################################################################
@@ -94,13 +90,13 @@ class Genotype:
 
 
 #function takes gff file and retrieves coordinates of all CDSs for all mRNAs
-def parseGenes(gffLines):
+def parseGenes(gff):
     #little function to parse the info line
     makeInfoDict = lambda infoString: dict([x.split("=") for x in infoString.strip(";").split(";")])
     output = {}
-    for gffLine in gffLines:
+    for gffLine in gff:
         if len(gffLine) > 1 and gffLine[0] != "#":
-            gffObjects = gffLine.split()
+            gffObjects = gffLine.split("\t")
             #store all mRNA and CDS data for the particular scaffold
             scaffold = gffObjects[0]
             if scaffold not in output.keys():
@@ -789,6 +785,79 @@ def popDiv(Aln, doPairs = True):
     
     return output
 
+#def ABBABABA(Aln, P1, P2, P3, P4, minData):
+    ##subset by population
+    #P1Aln = Aln.subset(groups=[P1])
+    #P2Aln = Aln.subset(groups=[P2])
+    #P3Aln = Aln.subset(groups=[P3])
+    #P4Aln = Aln.subset(groups=[P4])
+    #P123Aln = Aln.subset(groups=[P1,P2,P3,P4])
+    #ABBAsum = BABAsum = maxABBAsum = maxBABAsum = 0.0
+    #sitesUsed = 0
+    ##get derived frequencies for all biallelic siites
+    #for i in P123Aln.biSites():
+        #print >> sys.stderr, i
+        ##if theres a minimum proportion of sites, check all pops
+        #if minData and np.any([A.siteNonNan(i, prop=True) for A in (P1Aln, P2Aln, P3Aln, P4Aln)] < minData): continue
+        #allFreqs = Aln.siteFreqs(i)[0] #an array with 4 values, the freq for A,C,G and T
+        ## get frequencies for wach pop
+        #P1Freqs,P2Freqs,P3Freqs,P4Freqs = [A.siteFreqs(i)[0] for A in (P1Aln, P2Aln, P3Aln, P4Aln)]
+        ##check for bad data
+        #if np.any(np.isnan(P1Freqs)) or np.any(np.isnan(P2Freqs)) or np.any(np.isnan(P3Freqs)) or np.any(np.isnan(P4Freqs)): continue
+        ##if the outgroup is fixed, then that is the ancestral state - otherwise the derived state is the most common allele overall
+        #if np.max(P4Freqs) == 1.:
+            #anc = np.where(P4Freqs == 1)[0][0] #ancetral allele is which is fixed (get the index)
+            #der = [i for i in np.where(allFreqs > 0)[0] if i != anc][0] # derived is the index that is > 0 but not anc
+        #else:
+            ##der = np.argsort(allFreqs)[-2] # the less common base overall
+            #continue
+        ##derived allele frequencies
+        #P1derFreq = P1Freqs[der]
+        #P2derFreq = P2Freqs[der]
+        #P3derFreq = P3Freqs[der]
+        #P4derFreq = P4Freqs[der]
+        #print >> sys.stderr, [P1derFreq, P2derFreq, P3derFreq, P4derFreq]
+        #PDderFreq = max(P2derFreq,P3derFreq)
+        #print >> sys.stderr, PDderFreq
+        ## get weigtings for ABBAs and BABAs
+        #ABBA = (1 - P1derFreq) * P2derFreq * P3derFreq * (1 - P4derFreq)
+        #BABA = P1derFreq * (1 - P2derFreq) * P3derFreq * (1 - P4derFreq)
+        #maxABBA = (1 - P1derFreq) * PDderFreq * PDderFreq * (1 - P4derFreq)
+        #maxBABA = P1derFreq * (1 - PDderFreq) * PDderFreq * (1 - P4derFreq)
+        #ABBAsum += (1 - P1derFreq) * P2derFreq * P3derFreq * (1 - P4derFreq)
+        #print >> sys.stderr, "\n"
+        #print >> sys.stderr, ABBA
+        #print >> sys.stderr, ABBAsum
+        #print >> sys.stderr, "\n"
+        #BABAsum += P1derFreq * (1 - P2derFreq) * P3derFreq * (1 - P4derFreq)
+        #print >> sys.stderr, BABA
+        #print >> sys.stderr, BABAsum
+        #print >> sys.stderr, "\n"
+        #maxABBAsum += (1 - P1derFreq) * PDderFreq * PDderFreq * (1 - P4derFreq)
+        #print >> sys.stderr, maxABBA
+        #print >> sys.stderr, maxABBAsum
+        #print >> sys.stderr, "\n"
+        #maxBABAsum += P1derFreq * (1 - PDderFreq) * PDderFreq * (1 - P4derFreq)
+        #print >> sys.stderr, maxBABA
+        #print >> sys.stderr, maxBABAsum
+        #print >> sys.stderr, "\n"
+        #sitesUsed += 1
+    ##calculate D, fd
+    #output = {}
+    #try: output["D"] = (ABBAsum - BABAsum) / (ABBAsum + BABAsum)
+    #except: output["D"] = np.NaN
+    #try:
+        #if output["D"] >= 0: output["fd"] = (ABBAsum - BABAsum) / (maxABBAsum - maxBABAsum)
+        #else: output["fd"] = np.NaN
+    #except: output["fd"] = np.NaN
+    #output["ABBA"] = ABBAsum
+    #output["BABA"] = BABAsum
+    #output["ABBA_P1PDPDO"] = maxABBAsum
+    #output["BABA_P1PDPDO"] = maxBABAsum
+    #output["sitesUsed"] = sitesUsed
+    
+    #return output
+
 
 def ABBABABA(Aln, P1, P2, P3, P4, minData):
     #subset by population
@@ -797,7 +866,7 @@ def ABBABABA(Aln, P1, P2, P3, P4, minData):
     P3Aln = Aln.subset(groups=[P3])
     P4Aln = Aln.subset(groups=[P4])
     P123Aln = Aln.subset(groups=[P1,P2,P3,P4])
-    ABBAsum = BABAsum = maxABBAsum = maxBABAsum = 0.0
+    D_numer = D_denom = fd_denom = fdM_denom = 0.0
     sitesUsed = 0
     #get derived frequencies for all biallelic siites
     for i in P123Aln.biSites():
@@ -812,79 +881,72 @@ def ABBABABA(Aln, P1, P2, P3, P4, minData):
         if np.max(P4Freqs) == 1.:
             anc = np.where(P4Freqs == 1)[0][0] #ancetral allele is which is fixed (get the index)
             der = [i for i in np.where(allFreqs > 0)[0] if i != anc][0] # derived is the index that is > 0 but not anc
-        else:der = np.argsort(allFreqs)[-2] # the less common base overall
+        else:
+            #der = np.argsort(allFreqs)[-2] # the less common base overall
+            continue
         #derived allele frequencies
         P1derFreq = P1Freqs[der]
         P2derFreq = P2Freqs[der]
         P3derFreq = P3Freqs[der]
         P4derFreq = P4Freqs[der]
-        PDderFreq = max(P2derFreq,P3derFreq)
         # get weigtings for ABBAs and BABAs
-        ABBAsum += (1 - P1derFreq) * P2derFreq * P3derFreq * (1 - P4derFreq)
-        BABAsum += P1derFreq * (1 - P2derFreq) * P3derFreq * (1 - P4derFreq)
-        maxABBAsum += (1 - P1derFreq) * PDderFreq * PDderFreq * (1 - P4derFreq)
-        maxBABAsum += P1derFreq * (1 - PDderFreq) * PDderFreq * (1 - P4derFreq)
+        D_numer += (1 - P1derFreq) * P2derFreq * P3derFreq * (1 - P4derFreq) - P1derFreq * (1 - P2derFreq) * P3derFreq * (1 - P4derFreq)
+        D_denom += (1 - P1derFreq) * P2derFreq * P3derFreq * (1 - P4derFreq) + P1derFreq * (1 - P2derFreq) * P3derFreq * (1 - P4derFreq)
+        
+        #fd
+        if P2derFreq <= P3derFreq:
+            fd_denom += (1 - P1derFreq) * P3derFreq * P3derFreq * (1 - P4derFreq) - P1derFreq * (1 - P3derFreq) * P3derFreq * (1 - P4derFreq)
+        else:
+            fd_denom += (1 - P1derFreq) * P2derFreq * P2derFreq * (1 - P4derFreq) - P1derFreq * (1 - P2derFreq) * P2derFreq * (1 - P4derFreq)
+        
+        #fdM
+        if P2derFreq >= P1derFreq:
+            if P2derFreq <= P3derFreq:
+                fdM_denom += (1 - P1derFreq) * P3derFreq * P3derFreq * (1 - P4derFreq) - P1derFreq * (1 - P3derFreq) * P3derFreq * (1 - P4derFreq)
+            else:
+                fdM_denom += (1 - P1derFreq) * P2derFreq * P2derFreq * (1 - P4derFreq) - P1derFreq * (1 - P2derFreq) * P2derFreq * (1 - P4derFreq)
+        else:
+            if P1derFreq <= P3derFreq:
+                fdM_denom -= (1 - P3derFreq) * P2derFreq * P3derFreq * (1 - P4derFreq) - P3derFreq * (1 - P2derFreq) * P3derFreq * (1 - P4derFreq)
+            else:
+                fdM_denom -= (1 - P1derFreq) * P2derFreq * P1derFreq * (1 - P4derFreq) - P1derFreq * (1 - P2derFreq) * P1derFreq * (1 - P4derFreq)
+        
         sitesUsed += 1
     #calculate D, fd
     output = {}
-    try: output["D"] = (ABBAsum - BABAsum) / (ABBAsum + BABAsum)
+    try: output["D"] = D_numer / D_denom
     except: output["D"] = np.NaN
     try:
-        if output["D"] >= 0: output["fd"] = (ABBAsum - BABAsum) / (maxABBAsum - maxBABAsum)
+        if output["D"] >= 0: output["fd"] = D_numer / fd_denom
         else: output["fd"] = np.NaN
     except: output["fd"] = np.NaN
-    output["ABBA"] = ABBAsum
-    output["BABA"] = BABAsum
+    try:
+        output["fdM"] = D_numer / fdM_denom
+    except: output["fd"] = np.NaN
     output["sitesUsed"] = sitesUsed
     
     return output
 
 
-#def ABBABABA_countBased(Aln, P1, P2, P3, P4, minData, outgroupFixed=False):
+##rewriting ABBABABA code to match Hannes Svardal's methods based on numpy arrays
+
+#def ABBABABA(Aln, P1, P2, P3, P4, minData):
     ##subset by population
-    #P1Aln = Aln.subset(groups=[P1])
-    #P2Aln = Aln.subset(groups=[P2])
-    #P3Aln = Aln.subset(groups=[P3])
-    #P4Aln = Aln.subset(groups=[P4])
-    #P123Aln = Aln.subset(groups=[P1,P2,P3,P4])
-    #ABBAsum = BABAsum = maxABBAsum = maxBABAsum = BBAAsum = 0.0
-    #sitesUsed = 0
+    #all4Aln = Aln.subset(groups=[P1,P2,P3,P4])
+    #P1Aln = all4Aln.subset(groups=[P1])
+    #P2Aln = all4Aln.subset(groups=[P2])
+    #P3Aln = all4Aln.subset(groups=[P3])
+    #P4Aln = all4Aln.subset(groups=[P4])
     ##get derived frequencies for all biallelic siites
-    #for i in P123Aln.biSites():
-        ##if theres a minimum proportion of sites, check all pops
-        #if minData and np.any([A.siteNonNan(i, prop=True) for A in (P1Aln, P2Aln, P3Aln, P4Aln)] < minData): continue
-        #allFreqs = Aln.siteFreqs(i)[0] #an array with 4 values, the freq for A,C,G and T
-        ## get frequencies for each pop
-        #P1Freqs,P2Freqs,P3Freqs,P4Freqs = [A.siteFreqs(i, asCounts=True)[0] for A in (P1Aln, P2Aln, P3Aln, P4Aln)]
-        ##check for bad data
-        #if np.any(np.isnan(P1Freqs)) or np.any(np.isnan(P2Freqs)) or np.any(np.isnan(P3Freqs)) or np.any(np.isnan(P4Freqs)): continue
-        ##if the outgroup is fixed, then that is the ancestral state - otherwise the derived state is the most common allele overall
-        #if np.max(P4Freqs) == np.sum(P4Freqs):
-            #anc = np.argmax(P4Freqs) #ancetral allele is which is fixed (get the index)
-            #der = [i for i in np.where(allFreqs > 0)[0] if i != anc][0] # derived is the index that is > 0 but not anc
-        #elif not outgroupFixed: der,anc = np.argsort(allFreqs)[-2:]# assign second and most common as derived and ancestral
-        #else: continue
-        ## get weigtings for ABBAs and BABAs
-        #ABBAsum += P1Freqs[anc] * P2Freqs[der] * P3Freqs[der] * P4Freqs[anc]
-        #BABAsum += P1Freqs[der] * P2Freqs[anc] * P3Freqs[der] * P4Freqs[anc]
-        #BBAAsum += P1Freqs[der] * P2Freqs[der] * P3Freqs[anc] * P4Freqs[anc]
-        #PDFreqs = P3Freqs if P3Freqs[der] >= P2Freqs[der] else P2Freqs
-        #maxABBAsum += P1Freqs[anc] * PDFreqs[der] * PDFreqs[der] * P4Freqs[anc]
-        #maxBABAsum += P1Freqs[der] * PDFreqs[anc] * PDFreqs[der] * P4Freqs[anc]
-        #sitesUsed += 1
-    ##calculate D, fd
-    #output = {}
-    #try: output["D"] = (ABBAsum - BABAsum) / (ABBAsum + BABAsum)
-    #except: output["D"] = np.NaN
-    #try:
-        #if output["D"] >= 0: output["fd"] = (ABBAsum - BABAsum) / (maxABBAsum - maxBABAsum)
-        #else: output["fd"] = np.NaN
-    #except: output["fd"] = np.NaN
-    #output["ABBA"] = ABBAsum
-    #output["BABA"] = BABAsum
-    #output["sitesUsed"] = sitesUsed
+    #biSites = all4Aln.biSites()
+    #goodSites = (P1Aln.siteNonNan()*1./P1Aln.N >= minData &
+                 #P2Aln.siteNonNan()*1./P2Aln.N >= minData &
+                 #P3Aln.siteNonNan()*1./P3Aln.N >= minData &
+                 #P4Aln.siteNonNan()*1./P4Aln.N >= minData)
     
-    #return output
+    #P1freqs = P1Aln.siteFreqs()
+    
+    
 
 
 def popSiteFreqs(aln, minData = 0):
@@ -1172,8 +1234,6 @@ def predefinedCoordWindows(genoFile, windCoords, names = None, splitPhased=False
         names = [n + "_" + letter for n in names for letter in string.ascii_uppercase[:ploidyDict[n]]]
     #indices of samples
     nameIndices = dict(zip(names, [allNames.index(name) for name in names])) # records file column for each name
-    #window counter
-    w = 0
     window = None
     #read first line
     line = genoFile.readline()
@@ -1182,10 +1242,11 @@ def predefinedCoordWindows(genoFile, windCoords, names = None, splitPhased=False
     for w in range(len(windCoords)):
         
         #make new window, or if on same scaf just slide it
+        ID = windCoords[w][3] if len(windCoords[w]) > 3 else "NA"
         if window and window.scaffold == windCoords[w][0]:
             window.slide(newLimits=[windCoords[w][1],windCoords[w][2]])
-            window.ID = w
-        else: window = GenoWindow(scaffold = windCoords[w][0], limits=[windCoords[w][1],windCoords[w][2]], names = names, ID = w)
+            window.ID = ID
+        else: window = GenoWindow(scaffold = windCoords[w][0], limits=[windCoords[w][1],windCoords[w][2]], names = names, ID = ID)
         
         #now we need to check that our line in the genome is in a good position
         #if its above the current window - keep reading
@@ -1314,8 +1375,8 @@ def subset(things,subLen):
     return [things[starts[i]:ends[i]] for i in range(len(starts))]
 
 
-def makeAlnString(names=None, seqs=None, seqDict=None, format="phylip", lineLen=None):
-    assert format=="phylip" or format=="fasta"
+def makeAlnString(names=None, seqs=None, seqDict=None, outFormat="phylip", lineLen=None):
+    assert outFormat=="phylip" or outFormat=="fasta"
     if seqDict: names, seqs = zip(*seqDict.items())
     else: assert len(names) == len(seqs)
     seqs = ["".join(s) for s in seqs]
@@ -1323,11 +1384,11 @@ def makeAlnString(names=None, seqs=None, seqDict=None, format="phylip", lineLen=
     nSamp = len(names)
     seqLen = max(map(len,seqs))
     if lineLen: seqs = ["\n".join(subset(s,lineLen)) for s in seqs]
-    if format == "phylip":
+    if outFormat == "phylip":
         output.append(" " + str(nSamp) + " " + str(seqLen))
         for x in range(nSamp):
             output.append(names[x] + "   " + seqs[x])
-    elif format == "fasta":
+    elif outFormat == "fasta":
         for x in range(nSamp):
             output.append(">" + names[x])
             output.append(seqs[x])
