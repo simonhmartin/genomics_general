@@ -319,7 +319,7 @@ if doTrios:
 
 #samples per pop
 
-nHapDict = dict([(popName, sum([ploidyDict[sample] for sample in popDict[popName]])) for name in inPopNames]) 
+nHapDict = dict([(popName, sum([ploidyDict[sample] for sample in popDict[popName]])) for popName in inPopNames]) 
 
 #if sub sampling, first check that all pops have at least that number of samples
 if subSample is not None:
