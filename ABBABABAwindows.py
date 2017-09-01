@@ -18,7 +18,7 @@ from time import sleep
 '''A function that reads from the window queue, calls some other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using. This is the function that will run on each of the N cores.'''
 def ABBABABA_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, P1, P2, P3, O, minData, minSites,
-                     addWindowID=False, stats = ["ABBA","BABA","D","fd"]):
+                     addWindowID=False, stats = ["D","fd","fdM"]):
     while True:
         windowNumber,window = windowQueue.get() # retrieve window
         if windType == "coordinate" or windType == "predefined":
@@ -220,8 +220,8 @@ else: genoFile = sys.stdin
 if args.outFile: outFile = gzip.open(args.outFile, "w") if args.outFile.endswith(".gz") else open(args.outFile, "w")
 else: outFile = sys.stdout
 
-if not args.addWindowID: outFile.write("scaffold,start,end,mid,sites,sitesUsed,ABBA,BABA,D,fd\n")
-else: outFile.write("windowID,scaffold,start,end,mid,sites,sitesUsed,ABBA,BABA,D,fd\n")
+if not args.addWindowID: outFile.write("scaffold,start,end,mid,sites,sitesUsed,D,fd,fdM\n")
+else: outFile.write("windowID,scaffold,start,end,mid,sites,sitesUsed,D,fd,fdM\n")
 
 ##############################################################
 
