@@ -55,7 +55,7 @@ if args.mode == "cat":
     window = genomics.parseGenoFile(genoFile, names=samples, splitPhased=args.splitPhased)
     #write
     seqDict = window.seqDict()
-    seqFile.write(genomics.makeAlnString(window.names,[seqDict[name] for name in window.names],format = args.format))
+    seqFile.write(genomics.makeAlnString(window.names,[seqDict[name] for name in window.names],outFormat = args.format))
     genoFile.close()
     seqFile.close()
     exit()
@@ -108,7 +108,7 @@ if args.mode == "windows" or args.mode == "contigs":
         
         #write
         seqDict = window.seqDict()
-        seqFile.write(genomics.makeAlnString(seqNames,[seqDict[name] for name in seqNames],format = args.format))
+        seqFile.write(genomics.makeAlnString(seqNames,[seqDict[name] for name in seqNames],outFormat = args.format))
         
         if args.separateFiles: seqFile.close()
 
