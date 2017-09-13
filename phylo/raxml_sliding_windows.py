@@ -43,25 +43,20 @@ def raxTree(seqBlock, indNames, model, raxml, outgroup = None, uniqueTag = "", t
 
 '''A function that reads from the window queue, calls sume other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using'''
-def raxml_wrapper(windowQueue, resultQueue, windType, genoFormat, model, outgroup, raxml, minSites, minPerInd, test = False):
+def raxml_wrapper(windowQueue, resultQueue, windType, genoFormat, model, outgroup, raxml, minSites, minPerInd, minSNPs=None, test = False):
     while True:
         windowNumber,window = windowQueue.get()
-        sites = window.seqLen()
-        if test or verbose:
-            print >> sys.stderr, "Window", windowNumber, "received for analysis, length:", sites
-        if windType == "coordinate": scaf,start,end,mid = (window.scaffold, window.start, window.end, window.midPos())
+        Nsites = window.seqLen()
+        if test or verbose: print >> sys.stderr, "Window", windowNumber, "received for analysis, length:", Nsites
+        if windType == "coordinate" or windType == "predefined": scaf,start,end,mid = (window.scaffold, window.limits[0], window.limits[1], window.midPos())
         else: scaf,start,end,mid = (window.scaffold, window.firstPos(), window.lastPos(), window.midPos())
-        data = [window.scaffold, str(start), str(end), str(mid), str(sites)]
-        if sites >= minSites:
-            block = window.seqs
+        data = [window.scaffold, str(start), str(end), str(mid), str(Nsites)]
+        if Nsites >= minSites:
+            aln = genomics.genoToAlignment(window.seqDict(), genoFormat = genoFormat)
             indNames = window.names
-            #convert block if necessary
-            if genoFormat == "phased":
-                block = [seq for phasedSeq in [genomics.parsePhase(x) for x in block] for seq in phasedSeq]
-                indNames = [i + "_" + x for i in indNames for x in ("A","B")]
-            sitesPerInd = [len([x for x in seq if x != "N"]) for seq in block]
-            if min(sitesPerInd) >= minPerInd:
-                tree = raxTree(block,indNames,model,raxml, outgroup, uniqueTag = scaf + "_" + str(start), test = test, log = log)
+            sitesPerInd = aln.seqNonNan()
+            if min(sitesPerInd) >= minPerInd and (minSNPs is None or len(aln.varSites(indices=np.array([i for i in range(aln.N) if aln.sampleNames[i] not in outgroup]))) >= minSNPs):
+                tree = raxTree(aln.array,aln.names,model,raxml, outgroup, uniqueTag = scaf + "_" + str(start), test = test, log = log)
             else: tree= "NA\n"
         else: tree = "NA\n"
         
@@ -127,11 +122,12 @@ parser.add_argument("--windType", help="Type of windows to make", action = "stor
 parser.add_argument("-w", "--windSize", help="Window size in bases", type=int, action = "store", required = True, metavar="sites")
 parser.add_argument("-M", "--minSites", help="Minumum good sites per window", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-Mi", "--minPerInd", help="Minumum good sites per individual", type=int, action = "store", required = False, metavar="sites")
+parser.add_argument("-Ms", "--minSNPs", help="Minumum number of SNPs", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-S", "--stepSize", help="Step size for coordinate sliding window", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-O", "--overlap", help="Overlap for sites sliding window", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-D", "--maxDist", help="Maximum span distance for sites window", type=int, action = "store", required = False)
 
-parser.add_argument("-g", "--genoFile", help="Input genotypes file", required = True)
+parser.add_argument("-g", "--genoFile", help="Input genotypes file")
 parser.add_argument("-p", "--prefix", help="Prefix for output files", required = True)
 
 parser.add_argument("--exclude", help="File of scaffolds to exclude", required = False)
@@ -268,7 +264,8 @@ of course these will only start doing anything after we put data into the line q
 the function we call is actually a wrapper for another function.(s) This one reads from the line queue, passes to some analysis function(s), gets the results and sends to the result queue'''
 
 for x in range(threads):
-    worker = Process(target=raxml_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, model, outgroup, raxml, minSites, minPerInd, test,))
+    worker = Process(target=raxml_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, model,
+                                                   outgroup, raxml, minSites, minPerInd, args.minSNPs, test,))
     worker.daemon = True
     worker.start()
     print >> sys.stderr, "started worker", x
