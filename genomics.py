@@ -927,26 +927,230 @@ def ABBABABA(Aln, P1, P2, P3, P4, minData):
     
     return output
 
+### F4 and ABBABABA stats using Hannes Svardal's method
 
-##rewriting ABBABABA code to match Hannes Svardal's methods based on numpy arrays
+def f4(p1,p2,p3,p4):
+    f4 = (1 - p1)*p2*p3*(1-p4) - p1 * (1-p2)*p3*(1-p4)
+    return f4
 
-#def ABBABABA(Aln, P1, P2, P3, P4, minData):
-    ##subset by population
-    #all4Aln = Aln.subset(groups=[P1,P2,P3,P4])
-    #P1Aln = all4Aln.subset(groups=[P1])
-    #P2Aln = all4Aln.subset(groups=[P2])
-    #P3Aln = all4Aln.subset(groups=[P3])
-    #P4Aln = all4Aln.subset(groups=[P4])
-    ##get derived frequencies for all biallelic siites
-    #biSites = all4Aln.biSites()
-    #goodSites = (P1Aln.siteNonNan()*1./P1Aln.N >= minData &
-                 #P2Aln.siteNonNan()*1./P2Aln.N >= minData &
-                 #P3Aln.siteNonNan()*1./P3Aln.N >= minData &
-                 #P4Aln.siteNonNan()*1./P4Aln.N >= minData)
+def f4_c(p1,p2,p3,p4):
+    """
+    corrected f4
+    """
+    f = f4(p1,p2,p3,p4) + f4(1-p1,1-p2,1-p3,1-p4)
+    return f
+
+def fhom_old(p1,p2,p3,p4):
+    return f4(p1,p2,p3,p4).sum()*1./f4(p1,p3,p3,p4).sum()
+
+def fhom_new(p1,p2,p3,p4):
+    """
+    This is fhom using the correct formula
+    for f4
+    """
+    return (f4_c(p1,p2,p3,p4)).sum()*1./(f4_c(p1,p3,p3,p4)).sum()
+
+def D(p1,p2,p3,p4):
+    return f4(p1,p2,p3,p4).sum()*1./((1 - p1)*p2*p3*(1-p4) + p1 * (1-p2)*p3*(1-p4)).sum()
+
+
+
+def D_new(p1,p2,p3,p4):
+    """
+    This is D using the correct formula
+    for f4.
+    One benchmark for a correct statistic is that
+    it should always have the same sign as D_new!
+    """
+    return (f4_c(p1,p2,p3,p4)).sum()*1./((1 - p1)*p2*p3*(1-p4) + p1 * (1-p2)*p3*(1-p4)+\
+                                                              p1*(1-p2)*(1-p3)*p4 + (1-p1) * p2*(1-p3)*p4).sum()
+
+def fd(p1,p2,p3,p4):
+    pd = p2* (p2>p3) + p3*(p3>=p2)
+    return f4(p1,p2,p3,p4).sum()*1./f4(p1,pd,pd,p4).sum()
+
+
+def fd_new(p1,p2,p3,p4):
+    """
+    This is fd using the correct formula
+    for f4.
+    I think it generally does not make sense 
+    with the general f4.
+    """
+    pd = p2* (p2>p3) + p3*(p3>=p2)
+    return (f4_c(p1,p2,p3,p4)).sum()*1./(f4_c(p1,pd,pd,p4)).sum()
+
+def get_fdm_p(p1,p2,p3):
+    a = (p3 > p1)
+    b = (p3 > p2)
+    x = (p1 > p2)
+    y = ~x
+    pdm1 = p3*(x&a) + p1*(~(x&a))
+    pdm2 = p3*(y&b) + p2*(~(y&b))
+    pdm3 = -p3*(x&a) + p3*(y&b) - p1*(x&~a) + p2*(y&~b)
+    return pdm1, pdm2, pdm3
+
+def fdm(p1,p2,p3,p4):
+    pdm1,pdm2,pdm3 = get_fdm_p(p1,p2,p3)
+    denom = f4(pdm1,pdm2,pdm3,p4)
+    #This would be a new version wiht the correct f formula, but I think it does not make much sense
+    #denom = ((pdm1 - pdm2) * (pdm3 - p4))
+    return f4(p1,p2,p3,p4).sum()*1./denom.sum()
+
+
+def fdm_new(p1,p2,p3,p4):
+    """
+    This is fd using the correct formula
+    for f4.
+    I think it generally does not make sense 
+    with the general f4.
+    """
+    pdm1,pdm2,pdm3 = get_fdm_p(p1,p2,p3)
+    #denom = ((pdm1 - pdm2) * (pdm3 - p4))
+    denom = f4_c(pdm1,pdm2,pdm3,p4)
+    return (f4_c(p1,p2,p3,p4)).sum()*1./denom.sum()
+
+def fdh(p1,p2,p3,p4):
+    """
+    This is fd using the correct formula
+    for f4.
+    I think it generally does not make sense 
+    with the general f4.
+    """
+    num = f4_c(p1,p2,p3,p4)
+    t11 = f4_c(p1,p3,p3,p4) 
+    t12 = f4_c(p4,p2,p3,p4)
+    t21 = f4_c(p3,p2,p3,p4)
+    t22 = f4_c(p1,p4,p3,p4)
+    denom = np.amax([t11,t12,t21,t22],axis=0)
     
-    #P1freqs = P1Aln.siteFreqs()
+    return num.sum()*1./denom.sum()
+
+def fdh2(p1,p2,p3,p4):
+    """
+    This is fd using the correct formula
+    for f4.
+    I think it generally does not make sense 
+    with the general f4.
+    """
+    num = f4_c(p1,p2,p3,p4)
+    t11 = f4_c(p1,p3,p3,p4) 
+    t12 = f4_c(p4,p2,p3,p4)
+    t21 = f4_c(p3,p2,p3,p4)
+    t22 = f4_c(p1,p4,p3,p4)
+    t31 = f4_c(p1,p2,p2,p4)
+    t32 = f4_c(p1,p2,p3,p1)
+    t41 = f4_c(p1,p2,p1,p4)
+    t42 = f4_c(p1,p2,p3,p2)
+    denom = np.amax([t11,t12,t21,t22,t31,t32,t41,t42],axis=0)
     
+    return num.sum()*1./denom.sum()
+
+
+
+def fh(p1,p2,p3,p4):
+    """
+    PROPOSED statistic
+    I think that this statistic is well behaved
+    in the sense that it is in [-1,1] and
+    it always has the same sign as D_new.
+    I am not sure whether it is nicely proportional to the amount of gene flow.
+    Actually, I think that one cannot have both an unbiased estimator of gene flow
+    and totally nice behaviour even for small numbers.
+    I can imagine any esimator that reduced variability (with respect to f_green)
+    automatically introduces a bias.
     
+    This proposed f is basically (assuming the correct f4):
+    
+    sum(f4(p1,p2,p3,p4))
+    --------------------
+    sum(max(f4(p3,p4,p3,p4),f4(p1,p2,p1,p2)))
+    
+    or, equivalently
+    
+    sum(f4(p1,p2,p3,p4))
+    --------------------
+    sum(max(f2(p3,p4),f2(p1,p2)))
+    
+    """
+    t1 = np.abs((p1-p2))
+    t2 = np.abs((p3-p4))
+    denom = (t1 * (t1>t2) + t2 * (t2>=t1))**2
+    return (f4(p1,p2,p3,p4)+f4(1-p1,1-p2,1-p3,1-p4)).sum()*1./denom.sum()
+
+
+def ABAA(p1,p2,p3,p4):
+    return ((1 - p1)*p2*(1-p3)*(1-p4) + p1*(1-p2)*p3*p4).sum()
+
+def BAAA(p1,p2,p3,p4):
+    return (p1*(1 - p2)*(1-p3)*(1-p4) + (1-p1)*p2*p3*p4).sum()
+
+def ABBA(p1,p2,p3,p4):
+    return ((1 - p1)*p2*p3*(1-p4) + p1*(1-p2)*(1-p3)*p4).sum()
+
+def BABA(p1,p2,p3,p4):
+    return (p1*(1-p2)*p3*(1-p4) + (1-p1)*p2*(1-p3)*p4).sum()
+
+
+##new fourPop (previously ABBABABA) code, implementing all of Hannes Svardal's methods, plus others based on numpy arrays
+def fourPop(aln, P1, P2, P3, P4, minData, polarize=False, fixed=False):
+    #subset by population
+    all4Aln = aln.subset(groups=[P1,P2,P3,P4])
+    P1Aln = all4Aln.subset(groups=[P1])
+    P2Aln = all4Aln.subset(groups=[P2])
+    P3Aln = all4Aln.subset(groups=[P3])
+    P4Aln = all4Aln.subset(groups=[P4])
+
+    biallelic = [len(np.unique(all4Aln.numArray[:,x][all4Aln.nanMask[:,x]])) == 2 for x in xrange(all4Aln.l)]
+
+    enoughData =((P1Aln.siteNonNan()*1./P1Aln.N >= minData) &
+                    (P2Aln.siteNonNan()*1./P2Aln.N >= minData) &
+                    (P3Aln.siteNonNan()*1./P3Aln.N >= minData) &
+                    (P4Aln.siteNonNan()*1./P4Aln.N >= minData))[0]
+
+    goodSites = np.where(biallelic & enoughData)[0]
+
+    all4freqs = all4Aln.siteFreqs(sites=goodSites)
+    P1freqs = P1Aln.siteFreqs(sites=goodSites)
+    P2freqs = P2Aln.siteFreqs(sites=goodSites)
+    P3freqs = P3Aln.siteFreqs(sites=goodSites)
+    P4freqs = P4Aln.siteFreqs(sites=goodSites)
+    
+    try:
+        if polarize: alleleIndex = np.where((all4freqs > 0) & (P4freqs == 0))
+        elif fixed: alleleIndex = np.where((all4freqs > 0) & (P4freqs == 0) &
+                                        ((P1freqs==0) | (P1freqs==1)) &
+                                        ((P2freqs==0) | (P2freqs==1)) & 
+                                        ((P3freqs==0) | (P3freqs==1)))
+        else: alleleIndex = (np.arange(all4freqs.shape[0]), np.argsort(all4freqs, axis = 1)[:,2],)
+        
+        p1 = P1freqs[alleleIndex[0],alleleIndex[1]]
+        p2 = P2freqs[alleleIndex[0],alleleIndex[1]]
+        p3 = P3freqs[alleleIndex[0],alleleIndex[1]]
+        p4 = P4freqs[alleleIndex[0],alleleIndex[1]]
+        
+        f1 = fhom_old(p1,p2,p3,p4)
+        f2 = fhom_new(p1,p2,p3,p4)
+        d = D(p1,p2,p3,p4)
+        d_new = D_new(p1,p2,p3,p4)
+        fd1 = fd(p1,p2,p3,p4)
+        fd_new1 = fd_new(p1,p2,p3,p4)
+        fdm1 = fdm(p1,p2,p3,p4)
+        fdm_new1 = fdm_new(p1,p2,p3,p4)
+        fdh1 = fdh(p1,p2,p3,p4)
+        fdh21 = fdh2(p1,p2,p3,p4)
+        fh1 = fh(p1,p2,p3,p4)
+        abba = ABBA(p1,p2,p3,p4)
+        baba = BABA(p1,p2,p3,p4)
+        abaa = ABAA(p1,p2,p3,p4)
+        baaa = BAAA(p1,p2,p3,p4)
+        sitesUsed = len(alleleIndex[0])
+        
+        return dict(zip(['fhom',"fhom'",'D','fd',"fd'",'fdm',"fdm'",'fdh','fdh2','fh',"ABBA","BABA","ABAA","BAAA","sitesUsed"],
+                        [f1,f2,d,fd1,fd_new1,fdm1,fdm_new1,fdh1,fdh21,fh1,abba,baba,abaa,baaa,sitesUsed]))
+    except:
+        return dict(zip(['fhom',"fhom'",'D','fd',"fd'",'fdm',"fdm'",'fdh','fdh2','fh',"ABBA","BABA","ABAA","BAAA","sitesUsed"],
+                        [np.NaN]*14 +[0]))
 
 
 def popSiteFreqs(aln, minData = 0):
