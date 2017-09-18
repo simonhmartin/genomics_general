@@ -58,7 +58,7 @@ class VcfSite:
             self.genoData[sampleName] = vcfGenoData(genoInfoNames, lineDict[sampleName].split(":"))
     
     
-    def getGenotype(self, sample, gtFilters = [], withPhase=True, asNumbers = False, missing = None, allowOnly=None, keepPartial=False):
+    def getGenotype(self, sample, gtFilters = [], withPhase=True, asNumbers = False, missing = None, allowOnly=None, keepPartial=False, ploidy=None):
         genoData = self.genoData[sample]
         if missing is None:
             if asNumbers: missing = "."
@@ -77,8 +77,8 @@ class VcfSite:
                 passed = False
                 break
         
-        ploidy=len(genoData.alleles)
-
+        if ploidy is None: ploidy=len(genoData.alleles)
+        
         if passed:
             sampleAlleles = genoData.alleles
             if not asNumbers:
@@ -96,11 +96,15 @@ class VcfSite:
         else: return "".join(sampleAlleles)
     
     
-    def getGenotypes(self, gtFilters = [], asList = False, withPhase=True, asNumbers = False, samples = None, missing = None, allowOnly=None, keepPartial=False):
+    def getGenotypes(self, gtFilters = [], asList = False, withPhase=True, asNumbers = False,
+                     samples = None, missing = None, allowOnly=None, keepPartial=False, ploidyDict=None):
+        
         if not samples: samples = self.sampleNames
         output = {}
         for sample in samples:
-            output[sample] = self.getGenotype(sample, gtFilters=gtFilters, withPhase=withPhase, asNumbers=asNumbers, missing=missing, allowOnly=allowOnly)
+            ploidy = ploidyDict[sample] if ploidyDict is not None else None
+            output[sample] = self.getGenotype(sample, gtFilters=gtFilters, withPhase=withPhase, asNumbers=asNumbers,
+                                              missing=missing, allowOnly=allowOnly, keepPartial=keepPartial, ploidy=ploidy)
         
         if asList: return [output[sample] for sample in samples]
         
@@ -244,6 +248,9 @@ if __name__ == "__main__":
     parser.add_argument("--skipIndels", help="Skip indels", action = "store_true")
     parser.add_argument("--skipMono", help="Skip monomorphic sites", action = "store_true")
     
+    parser.add_argument("--ploidy", help="Ploidy for each sample", action = "store", type=int, nargs="+")
+    parser.add_argument("--ploidyFile", help="File with samples names and ploidy as columns", action = "store")
+    
     parser.add_argument("--field", help="Optional - format field to extract", action = "store")
     parser.add_argument("--missing", help="Value to use for missing data", action = "store")
     parser.add_argument("--outSep", help="Output separator", action = "store", default = "\t")
@@ -332,6 +339,15 @@ if __name__ == "__main__":
     if samples:
         for sample in samples: assert sample in vcf.sampleNames, "Specified sample name not in VCF header."
     else: samples = vcf.sampleNames
+    
+    if args.ploidy is not None:
+        ploidy = args.ploidy if len(args.ploidy) != 1 else args.ploidy*len(samples)
+        assert len(ploidy) == len(samples), "Incorrect number of ploidy values supplied."
+        ploidyDict = dict(zip(samples,ploidy))
+    elif args.ploidyFile is not None:
+        with open(args.ploidyFile, "r") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
+    else: ploidyDict = None
+
 
     ##########################################################################################################################
 
@@ -346,6 +362,7 @@ if __name__ == "__main__":
         if skipMono and vcfSite.getType() is "mono": continue
         if minQual and canFloat(vcfSite.QUAL) and float(vcfSite.QUAL) < minQual: continue
         if args.field is not None: output = vcfSite.getGenoField(args.field,samples=samples, missing=args.missing)
-        else: output = vcfSite.getGenotypes(gtFilters,asList=True,withPhase=True,samples=samples,missing=args.missing,allowOnly="ACGT",keepPartial=False)
+        else: output = vcfSite.getGenotypes(gtFilters,asList=True,withPhase=True,samples=samples,missing=args.missing,
+                                            allowOnly="ACGT",keepPartial=False,ploidyDict=ploidyDict)
         Out.write(outSep.join([vcfSite.CHROM, str(vcfSite.POS)] + output) + "\n")
 
