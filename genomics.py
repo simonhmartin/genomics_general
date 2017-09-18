@@ -42,7 +42,7 @@ class Genotype:
     def __init__(self, geno, genoFormat, ploidy = None, forcePloidy=False):
         if genoFormat == "phased":
             self.alleles = list(geno)[::2]
-            self.phase = geno[1] if len(geno) > 1 and len(geno)%2 == 1 else ""
+            self.phase = geno[1] if len(geno) > 1 and len(geno)%2 == 1 else "/"
         elif genoFormat == "alleles" or genoFormat == "pairs" or genoFormat == "haplo":
             self.alleles = list(geno)
             self.phase = ["/"]
