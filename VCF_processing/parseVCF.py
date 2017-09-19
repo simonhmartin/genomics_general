@@ -18,7 +18,7 @@ class vcfGenoData:
                 self.phase = self.GT[1]
                 self.alleles = self.GT.split(self.phase)
             elif len(self.GT) == 1:
-                self.phase = ""
+                self.phase = "/"
                 self.alleles = self.GT
             else: raise ValueError, "Error parsing genotype:" + str(self.GT)
     
