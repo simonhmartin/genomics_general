@@ -16,7 +16,7 @@ from time import sleep
 '''main worker function. This will watch the inQueue for pods, and pass lines from these pods to be parsed and filtered, before packaging back into a pod and sending on to the resultQueue'''
 def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,headers,include,exclude,samples,minCalls,minPopCalls,
                     minAlleles,maxAlleles,minVarCount,maxHet,minFreq,maxFreq,
-                    HWE_P,HWE_side,popDict,ploidyDict,fixed,forcePloidy,thinDist):
+                    HWE_P,HWE_side,popDict,ploidyDict,fixed,nearlyFixedDiff,forcePloidy,thinDist,noTest):
     sampleIndices = [headers.index(s) for s in samples]
     while True:
         podNumber,inPod = inQueue.get()
@@ -38,9 +38,10 @@ def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,headers,in
                     lastScaf = objects[0]
                     goodSite = False
                 elif pos - lastPos < thinDist: goodSite = False
-            if goodSite: goodSite = genomics.siteTest(site,samples=samples,minCalls=minCalls,minPopCalls=minPopCalls,
+            if goodSite and not noTest: goodSite = genomics.siteTest(site,samples=samples,minCalls=minCalls,minPopCalls=minPopCalls,
                                                minAlleles=minAlleles,maxAlleles=maxAlleles,minVarCount=minVarCount,
-                                               maxHet=maxHet,minFreq=minFreq,maxFreq=maxFreq,HWE_P=HWE_P,HWE_side=HWE_side,fixed=fixed)
+                                               maxHet=maxHet,minFreq=minFreq,maxFreq=maxFreq,HWE_P=HWE_P,HWE_side=HWE_side,
+                                               fixed=fixed,nearlyFixedDiff=nearlyFixedDiff)
             if goodSite:
                 outLine = "\t".join(objects[:2] + [str(g) for g in site.asList(samples, mode=outputGenoFormat)]) + "\n"
                 outPod.append((lineNumber,outLine))
@@ -160,13 +161,13 @@ parser.add_argument("--HWE", help="Hardy-Weinberg equalibrium test P-value and s
 #population-specific filtering arguments
 parser.add_argument("--minPopCalls", help="Minimum number of good genotype calls per pop (comma separated)", action = "store", metavar = "integer")
 parser.add_argument("--fixedDiffs", help="Only variants where differences are fixed between pops", action = "store_true")
+parser.add_argument("--nearlyFixedDiff", help="Only variants where frequency diff between any pops is > x", action = "store", type=float)
 
 #minimum distance for thinning
 parser.add_argument("--thinDist", help="Allowed distance between sites for thinning", type=int, action = "store", metavar = "integer")
 
-parser.add_argument("--skipChecks", help="Skip genotype checks to speed things up", action = "store_true")
 parser.add_argument("--podSize", help="Lines to analyse in each thread simultaneously", type=int, action = "store", default = 100000)
-
+parser.add_argument("--noTest", help="Output all lines (for debugging mostly)", action = "store_true")
 
 
 
@@ -216,7 +217,7 @@ else:
 
 popDict = {}
 popNames = []
-minPopCalls = None
+minPopCallsDict = None
 if args.pop:
     
     for pop in args.pop:
@@ -229,8 +230,11 @@ if args.pop:
                 ind,pop = line.split()
                 if pop in popDict and ind not in popDict[pop]: popDict[pop].append(ind)
     
-    if args.minPopCalls: minPopCalls = dict(zip([pop[0] for pop in args.pop],
-                                                [int(i) for i in args.minPopCalls.split(",")]))
+    if args.minPopCalls:
+        minPopCalls = [int(i) for i in args.minPopCalls.split(",")]
+        if len(minPopCalls) == 1: minPopCalls = minPopCalls*len(args.pop)
+        assert len(minPopCalls) == len(args.pop) 
+        minPopCallsDict = dict(zip([pop[0] for pop in args.pop],minPopCalls))
 
 nProcs = args.threads
 verbose = args.verbose
@@ -322,9 +326,10 @@ of course these will only start doing anything after we put data into the line q
 the function we call is actually a wrapper for another function.(s)
 This one reads from the pod queue, passes each line some analysis function(s), gets the results and sends to the result queue'''
 for x in range(nProcs):
-    worker = Process(target=analysisWrapper,args=(inQueue,doneQueue,args.inputGenoFormat,args.outputGenoFormat,headers,include,exclude,samples,minCalls,minPopCalls,
-                    minAlleles,maxAlleles,minVarCount,maxHet,minFreq,maxFreq,
-                    HWE_P,HWE_side,popDict,ploidyDict,fixed,args.forcePloidy,args.thinDist,))
+    worker = Process(target=analysisWrapper,args=(inQueue,doneQueue,args.inputGenoFormat,args.outputGenoFormat,headers,
+                                                  include,exclude,samples,minCalls,minPopCallsDict,minAlleles,maxAlleles,
+                                                  minVarCount,maxHet,minFreq,maxFreq,HWE_P,HWE_side,popDict,ploidyDict,
+                                                  fixed,args.nearlyFixedDiff,args.forcePloidy,args.thinDist,args.noTest,))
     worker.daemon = True
     worker.start()
 
