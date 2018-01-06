@@ -8,13 +8,18 @@ import sys, string, time, re, math, itertools
 ##################################################################################################################
 #Bits for intyerpreting and manipulating sequence data
 
-DIPLOTYPES = ['A', 'C', 'G', 'K', 'M', 'N', 'S', 'R', 'T', 'W', 'Y']
-PAIRS = ['AA', 'CC', 'GG', 'GT', 'AC', 'NN', 'CG', 'AG', 'TT', 'AT', 'CT']
-HOMOTYPES = ['A', 'C', 'G', 'N', 'N', 'N', 'N', 'N', 'T', 'N', 'N']
+DIPLOTYPES = ('A',  'C',  'G',  'K',  'M',  'N',  'S',  'R',  'T',  'W',  'Y')
+PAIRS =      ('AA', 'CC', 'GG', 'GT', 'AC', 'NN', 'CG', 'AG', 'TT', 'AT', 'CT')
+HOMOTYPES =  ('A',  'C',  'G',  'N',  'N',  'N',  'N',  'N',  'T',  'N',  'N')
+
+IUPAC =      ('A',  'C',  'G',  'T',  'M',  'R',  'W',  'S',  'Y',  'K',  'V',   'H',   'D',   'B',   'N')
+ALLTYPES =   ('A',  'C',  'G',  'T',  'AC', 'AG', 'AT', 'CG', 'CT', 'GT', 'ACG', 'ACT', 'AGT', 'CGT', 'ACGT')
 
 diploHaploDict = dict(zip(DIPLOTYPES,PAIRS))
 haploDiploDict = dict(zip(PAIRS,DIPLOTYPES))
 diploHomoDict = dict(zip(DIPLOTYPES,HOMOTYPES))
+basesIupacDict = dict(zip(ALLTYPES,IUPAC))
+iupacBasesDict = dict(zip(IUPAC,ALLTYPES))
 
 def haplo(diplo): return diploHaploDict[diplo]
 
@@ -26,6 +31,25 @@ seqNumDict = {"A":0,"C":1,"G":2,"T":3,"N":-999}
 
 numSeqDict = {0:"A",1:"C",2:"G",3:"T",-999:"N"}
 
+
+#translation table for bases
+seqtrans = string.maketrans("ACGTKMRYVHBDN", "TGCAMKYRBDVHN")
+
+def revTrans(seq):
+    return seq.translate(seqtrans)[::-1]
+
+def allPossibleSeqs(seq, ignoreNs = True):
+    if ignoreNs: basesList = [iupacBasesDict[s] if s != "N" else "N" for s in seq]
+    else: basesList = [iupacBasesDict[s] for s in seq]
+    seqs = [[]]
+    for bases in basesList:
+        for x in range(len(seqs)):
+            seqs[x].append(bases[0])
+            for b in bases[1:]:
+                newSeq = seqs[x][:]
+                newSeq[-1] = b
+                seqs.append(newSeq)
+    return ["".join(s) for s in seqs]
 
 def seqArrayToNumArray(seqArray):
     numArray = np.empty(shape = seqArray.shape, dtype=int)
@@ -121,11 +145,6 @@ def parseGenes(gff):
 
 
 
-#translation table for bases
-intab = "ACGTKMRYN"
-outtab = "TGCAMKYRN"
-trantab = string.maketrans(intab, outtab)
-
 
 #function to extract a CDS sequence from a genomic sequence given the exon starts, ands and strand
 def CDS(seq, seqPos, exonStarts, exonEnds, strand):
@@ -147,7 +166,7 @@ def CDS(seq, seqPos, exonStarts, exonEnds, strand):
   cdsSeq = "".join(cdsSeq)  
   #translate if necessary
   if strand == "-":
-    cdsSeq = cdsSeq.translate(trantab)
+    cdsSeq = cdsSeq.translate(seqtrans)
   #if not a multiple of three, remove trailing bases
   overhang = len(cdsSeq) % 3
   if overhang != 0:
@@ -173,9 +192,8 @@ def pseudoPhase(sequence, genoFormat = "diplo"):
         pairs = [haplo(g) for g in sequence]
         return [[p[0] for p in pairs], [p[1] for p in pairs]]
 
-
 def splitSeq(sequence, genoFormat = "phased"):
-    assert genoFormat in ["haplo", "diplo", "pairs", "alleles", "phased"]
+    assert genoFormat in ("haplo", "diplo", "pairs", "alleles", "phased",)
     if genoFormat == "diplo": sequence = [haplo(d) for d in sequence]
     split = zip(*sequence) 
     #remove phase splitters
@@ -231,12 +249,16 @@ class GenomeSite:
         if not samples: samples = self.sampleNames
         if mode == "bases":
             return [a for alleles in [self.genotypes[sample].alleles for sample in samples] for a in alleles]
+        elif mode == "alleles": #just bases with no phase
+            return [self.genotypes[sample].alleles for sample in samples]
+        if mode == "numeric":
+            return np.concatenate([self.genotypes[sample].numAlleles for sample in samples])
+        elif mode == "numAlleles": #numpy array of numeric alleles
+            return [self.genotypes[sample].numAlleles for sample in samples]
         elif mode == "phased": # like 'A|T' 
             return [self.genotypes[sample].asPhased() for sample in samples]
         elif mode == "diplo": #ACGT and KMRSYW for hets
             return [self.genotypes[sample].asDiplo() for sample in samples]
-        elif mode == "alleles": #just bases with no phase
-            return [self.genotypes[sample].alleles for sample in samples]
         elif mode == "coded": # vcf format '0/1' - optionally alleles can be provided (REF first)
             if alleles is None: alleles = self.alleles(byFreq = True)
             if codeDict is None: codeDict = dict(zip(alleles, [str(x) for x in range(len(alleles))]))
@@ -246,13 +268,21 @@ class GenomeSite:
             countAllele = alleles[-1]
             return [self.genotypes[sample].asCount(countAllele,missing) for sample in samples]
         else:
-            raise ValueError("mode must be 'bases', 'phased', 'diplo', 'alleles', 'coded', or 'count'")
+            raise ValueError("mode must be 'bases', 'alleles', 'numeric', 'numAlleles', 'phased', 'diplo', 'coded', or 'count'")
+    
+    def baseFreqs(self, samples = None, pop=None, asCounts=False):
+        if pop: samples = self.pops[pop]
+        if not samples: samples = self.sampleNames
+        numBases = np.concatenate([self.genotypes[sample].numAlleles for sample in samples])
+        return binBaseFreqs(numBases[numBases >= 0], asCounts = asCounts)
     
     def alleles(self, samples = None, pop=None, byFreq = False):
         if pop: samples = self.pops[pop]
         if not samples: samples = self.sampleNames
-        bases = [a for alleles in [self.genotypes[sample].alleles for sample in samples] for a in alleles]
-        alleles, counts = np.unique([b for b in bases if b in "ACGT"], return_counts = True)
+        counts = self.baseFreqs(samples=samples,asCounts = True)
+        idx = counts>0
+        alleles = np.array(["A","C","G","T"])[idx]
+        counts = counts[idx]
         if byFreq: return list(alleles[np.argsort(counts)[::-1]])
         else: return sorted(list(alleles))
     
@@ -301,6 +331,34 @@ def majorAllele(bases):
     return [b for b in ["A","C","G","T"] if baseCounts[b] == m]
 
 
+def binBaseFreqs(numArr, asCounts = False):
+    n = len(numArr)
+    if n == 0: return np.array([np.NaN]*4)
+    else:
+        if asCounts: return np.bincount(numArr, minlength=4)
+        else: return 1.* np.bincount(numArr, minlength=4) / n
+
+
+def derivedAllele(inBases, outBases):
+    outAlleles = np.unique(outBases)
+    inAlleles = np.unique(inBases)
+    if len(outAlleles) == 1 and len(inAlleles) == 2 and np.any(outAlleles[0] == inAlleles):
+        return inAlleles[inAlleles != outAlleles[0]][0]
+    else: return np.nan
+
+
+def minorAllele(bases):
+    alleles = np.unique(bases)
+    if len(alleles) == 2:
+        alleles, counts = np.unique(bases, return_counts = True)
+        return np.random.choice(alleles[counts==min(counts)])
+    else: return np.nan
+
+
+def consensus(bases):
+    x = "".join(np.unique([b for b in bases if b in "ACGT"]))
+    if x == "": x = "ACGT"
+    return(basesIupacDict[x])
 
 
 # method of Wigginton, Cutler and Abecasis, 2005 Am Gen Human Genet. (Adapted from their supplied R code)
@@ -372,24 +430,25 @@ def inHWE(genotypes, P_value, side = "both", verbose = False):
     else: return True
 
 
-def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAlleles=float("inf"),minVarCount=None,maxHet=None,minFreq=None,maxFreq=None,HWE_P=None,HWE_side="both",fixed=False):
+def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAlleles=float("inf"),minVarCount=None,
+             maxHet=None,minFreq=None,maxFreq=None,HWE_P=None,HWE_side="both",fixed=False,nearlyFixedDiff=None):
     if not samples: samples = site.sampleNames
     #check sufficient number of non-N calls
     if site.nonMissing() < minCalls: return False
-    bases = site.asList(mode = "bases", samples=samples)
-    baseCounts = baseFreqs(bases, asCounts = True)
+    numBases = site.asList(mode = "numeric", samples=samples)
+    numBases = numBases[numBases >= 0]
     #check min and max alleles 
     nAlleles = len(set(site.alleles(samples)))
     if not minAlleles <= nAlleles <= maxAlleles: return False
     #check variant filters
     if nAlleles > 1:
         # minor allele count
-        if minVarCount and sorted(baseCounts)[-2] < minVarCount: return False
+        if minVarCount and sorted(binBaseFreqs(numBases, asCounts = True))[-2] < minVarCount: return False
         #check maximum heterozygots?
         if maxHet and site.hets(samples) > maxHet: return False
         #if there is a frequency cutoff
-        if minFreq and not minFreq <= sorted(baseFreqs(bases))[-2]: return False
-        if maxFreq and not sorted(baseFreqs(bases))[-2] <= maxFreq: return False
+        if minFreq and not minFreq <= sorted(binBaseFreqs(numBases))[-2]: return False
+        if maxFreq and not sorted(binBaseFreqs(numBases))[-2] <= maxFreq: return False
         #if checking HWE
         if HWE_P:
             #if there are defined pops, check all of them
@@ -402,16 +461,21 @@ def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAllel
     #if there are population-specific filters
     popNames = site.pops.keys()
     if popNames >= 1:        
-        for popName in site.pops.keys():
+        for popName in popNames:
             if minPopCalls:
-                popDiplos = [d for d in site.asList(pop=popName, mode = "diplo") if d != "N"]
-                if len(popDiplos) < minPopCalls[popName]: return False
-    #if we want fixed differences only and there are two or more pops specified
-    if fixed:
-        #all pops must have only one allele, but taken together must have more than one
-        allelesByPop = [site.alleles(pop=popName) for popName in site.pops.keys()]
-        if not (set([len(popAlleles) for popAlleles in allelesByPop]) == set([1]) and
-                len(set([a for popAlleles in allelesByPop for a in popAlleles])) > 1): return False
+                popCalls = sum([site.genotypes[sample].isMissing()==False for sample in site.pops[popName]])
+                if popCalls < minPopCalls[popName]: return False
+        #if we want fixed differences only and there are two or more pops specified
+        if fixed:
+            #all pops must have only one allele, but taken together must have more than one
+            allelesByPop = [site.alleles(pop=popName) for popName in popNames]
+            if not (set([len(popAlleles) for popAlleles in allelesByPop]) == set([1]) and
+                    len(set([a for popAlleles in allelesByPop for a in popAlleles])) > 1): return False
+        #if we want nearly fixed differences, we need to get pop freqs and find any freq difference big enough
+        elif nearlyFixedDiff is not None:
+            popFreqs = [site.baseFreqs(pop=popName) for popName in popNames]
+            freqDiffs = [popFreqs[c[0]] - popFreqs[c[1]] for c in list(itertools.combinations(range(len(popNames)), 2))]
+            if not np.any(np.absolute(np.concatenate(freqDiffs)) >= nearlyFixedDiff): return False
     
     #if we get here we've passed all filters
     return True
@@ -462,7 +526,7 @@ class Alignment:
         self.array = seqArray
         self.numArray = numArray
          
-        self.nanMask = self.numArray>=0
+        self.nanMask = self.numArray >= 0
         
         self.N,self.l = self.array.shape
         
@@ -558,9 +622,12 @@ class Alignment:
         else: sites = makeList(sites)
         return np.array([binBaseFreqs(self.numArray[:,x][self.nanMask[:,x]], asCounts=asCounts) for x in sites])
     
+    def consensus(self, minData = 0.001):
+        propData = self.siteNonNan(prop=True)
+        return [consensus(self.array[:,i][self.nanMask[:,i]]) if propData[i] >= minData else "N" for i in xrange(self.l)]
 
 
-def genoToAlignment(seqDict, sampleData=None, genoFormat = "diplo"):
+def genoToAlignment(seqDict, sampleData=None, genoFormat = "diplo", positions = None):
     if sampleData is None: sampleData = SampleData()
     seqNames = []
     sampleNames = []
@@ -586,32 +653,10 @@ def genoToAlignment(seqDict, sampleData=None, genoFormat = "diplo"):
     return Alignment(sequences=[haploidSeqs[i] for i in order],
                      names =   [seqNames[i] for i in order],
                      groups=   [groups[i] for i in order],
+                     positions= positions,
                      sampleNames= [sampleNames[i] for i in order])
 
 
-
-def binBaseFreqs(numArr, asCounts = False):
-    n = len(numArr)
-    if n == 0: return np.array([np.NaN]*4)
-    else:
-        if asCounts: return np.bincount(numArr, minlength=4)
-        else: return 1.* np.bincount(numArr, minlength=4) / n
-
-
-def derivedAllele(inBases, outBases):
-    outAlleles = np.unique(outBases)
-    inAlleles = np.unique(inBases)
-    if len(outAlleles) == 1 and len(inAlleles) == 2 and np.any(outAlleles[0] == inAlleles):
-        return inAlleles[inAlleles != outAlleles[0]][0]
-    else: return np.nan
-
-
-def minorAllele(bases):
-    alleles = np.unique(bases)
-    if len(alleles) == 2:
-        alleles, counts = np.unique(bases, return_counts = True)
-        return np.random.choice(alleles[counts==min(counts)])
-    else: return np.nan
 
 
 def LD(basesA, basesB, ancA=None, ancB=None):
@@ -1102,12 +1147,12 @@ def fourPop(aln, P1, P2, P3, P4, minData, polarize=False, fixed=False):
     P4Aln = all4Aln.subset(groups=[P4])
 
     biallelic = [len(np.unique(all4Aln.numArray[:,x][all4Aln.nanMask[:,x]])) == 2 for x in xrange(all4Aln.l)]
-
+    
     enoughData =((P1Aln.siteNonNan()*1./P1Aln.N >= minData) &
                     (P2Aln.siteNonNan()*1./P2Aln.N >= minData) &
                     (P3Aln.siteNonNan()*1./P3Aln.N >= minData) &
-                    (P4Aln.siteNonNan()*1./P4Aln.N >= minData))[0]
-
+                    (P4Aln.siteNonNan()*1./P4Aln.N >= minData))
+        
     goodSites = np.where(biallelic & enoughData)[0]
 
     all4freqs = all4Aln.siteFreqs(sites=goodSites)
@@ -1116,7 +1161,8 @@ def fourPop(aln, P1, P2, P3, P4, minData, polarize=False, fixed=False):
     P3freqs = P3Aln.siteFreqs(sites=goodSites)
     P4freqs = P4Aln.siteFreqs(sites=goodSites)
     
-    try:
+    #try:
+    if len(goodSites) >= 1:
         if polarize: alleleIndex = np.where((all4freqs > 0) & (P4freqs == 0))
         elif fixed: alleleIndex = np.where((all4freqs > 0) & (P4freqs == 0) &
                                         ((P1freqs==0) | (P1freqs==1)) &
@@ -1148,7 +1194,7 @@ def fourPop(aln, P1, P2, P3, P4, minData, polarize=False, fixed=False):
         
         return dict(zip(['fhom',"fhom'",'D','fd',"fd'",'fdm',"fdm'",'fdh','fdh2','fh',"ABBA","BABA","ABAA","BAAA","sitesUsed"],
                         [f1,f2,d,fd1,fd_new1,fdm1,fdm_new1,fdh1,fdh21,fh1,abba,baba,abaa,baaa,sitesUsed]))
-    except:
+    else:
         return dict(zip(['fhom',"fhom'",'D','fd',"fd'",'fdm',"fdm'",'fdh','fdh2','fh',"ABBA","BABA","ABAA","BAAA","sitesUsed"],
                         [np.NaN]*14 +[0]))
 
@@ -1608,14 +1654,27 @@ def parseFasta(string):
     seqs = [s[s.index("\n"):].replace("\n","").replace(" ","") for s in splitString]
     return (names,seqs)
 
-
-def parsePhylip(string):
-    cutString= string[string.index("\n"):]
-    names = [l.split()[0] for l in cutString.split("\n") if len(l.split()) == 2]
-    for name in names: cutString = cutString.replace("\n" + name + " ", "name")
-    splitString = cutString.split("name")[1:]
-    seqs = [s.replace("\n","").replace(" ","") for s in splitString]
-    return (names,seqs)
+#Phylip can include multiple alignments. This will output multiple sequences as a list of tuples
+#Single alignments will be output as a tuple, unless asList is True
+def parsePhylip(string, asList=False): 
+    lineParts = [l.strip().split() for l in string.strip().split("\n")]
+    lineParts = [parts for parts in lineParts if parts != []] 
+    headIdx = []
+    Ns = []
+    Ls = []
+    for x in range(len(lineParts)):
+        try:
+            Ls.append(int(lineParts[x][1]))
+            Ns.append(int(lineParts[x][0]))
+            headIdx.append(x)
+        except: pass
+    
+    headIdx.append(len(lineParts))
+    names = [[lineParts[headIdx[i]+1+j][0] for j in range(Ns[i])] for i in range(len(headIdx)-1)]
+    seqIdx = [[range(headIdx[i]+1+j,headIdx[i+1],Ns[i]) for j in range(Ns[i])] for i in range(len(headIdx)-1)]
+    seqs = [["".join([lineParts[y][1] for y in x]) for x in w] for w in seqIdx] 
+    if not asList and len(names) == 1: return (names[0], seqs[0])
+    else: return zip(names,seqs)
 
 
 ############### working with fai
