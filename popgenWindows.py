@@ -113,6 +113,7 @@ parser.add_argument("-p", "--population", help="Pop name and optionally sample n
 parser.add_argument("--popsFile", help="Optional file of sample names and populations", action = "store", required = False)
 parser.add_argument("--samples", help="Samples to include for individual analysis", action = "store", metavar = "sample names")
 parser.add_argument("--haploid", help="Samples that are haploid (comma separated)", action = "store", metavar = "sample names")
+parser.add_argument("--inferPloidy", help="Ploidy will be inferred in each window (NOT RECOMMENED)", action = "store_true")
 parser.add_argument("--skipPairs", help="Do not do pairwise statistics", action = "store_true")
 parser.add_argument("--indHet", help="Calculate individual heterozygosity", action = "store_true")
 
@@ -207,7 +208,8 @@ if len(allInds) == 0:
     with gzip.open(args.genoFile, "r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r") as gf:
         allInds = gf.readline().split()[2:]
 
-ploidyDict = dict(zip(allInds,[2]*len(allInds)))
+if args.inferPloidy: ploidyDict = dict(zip(allInds,[None]*len(allInds)))
+else: ploidyDict = dict(zip(allInds,[2]*len(allInds)))
 
 if args.haploid:
     for sample in args.haploid.split(","):
