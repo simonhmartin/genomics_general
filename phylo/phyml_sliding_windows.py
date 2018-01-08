@@ -88,7 +88,7 @@ def phymlCrossVal(seqArray0, seqArray1, indNames, model, opt, phyml, prefix = ""
 
 '''A function that reads from the window queue, calls sume other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using'''
-def phyml_wrapper(windowQueue, resultQueue, windType, genoFormat, model, opt, outgroup, phyml, minSites, minPerInd, minSNPs=None,
+def phyml_wrapper(windowQueue, resultQueue, windType, model, opt, outgroup, phyml, minSites, minPerInd, minSNPs=None,
                   maxLDphase=False, bootstraps=0, crossVal=False, test = False):
     while True:
         windowNumber,window = windowQueue.get()
@@ -98,7 +98,8 @@ def phyml_wrapper(windowQueue, resultQueue, windType, genoFormat, model, opt, ou
         else: scaf,start,end,mid = (window.scaffold, window.firstPos(), window.lastPos(), window.midPos())
         prefix = scaf + "_" + str(start) + "_" + str(end) + "_"
         if Nsites >= minSites:
-            aln = genomics.genoToAlignment(window.seqDict(), genoFormat = genoFormat)
+            
+            aln = genomics.genoToAlignment(window.seqDict(), genoFormat = "phased")
             if len(outgroup) >= 1:
                 for seqName in aln.names:
                     if seqName in outgroup: seqName +="*"
@@ -202,8 +203,6 @@ parser.add_argument("--include", help="List of scaffolds to analyse (comma separ
 parser.add_argument("--excludeFile", help="File of scaffolds to exclude", required = False)
 parser.add_argument("--includeFile", help="File of scaffolds to analyse", required = False)
 
-parser.add_argument("-f", "--genoFormat", help="Format of genotypes in genotypes file", action='store', choices = ("phased","haplo"), required = True)
-
 parser.add_argument("--individuals", help="Individuals to include, separated by comma", action = "store", metavar="ind1,ind2,ind3...")
 
 parser.add_argument("--indFile", help="File of individuals to include, one per line", action = "store")
@@ -263,8 +262,6 @@ minSites = args.minSites
 if not minSites: minSites = windSize
 
 minPerInd = args.minPerInd
-
-genoFormat = args.genoFormat
 
 
 if args.individuals: indNames = args.individuals.split(",")
@@ -358,7 +355,7 @@ of course these will only start doing anything after we put data into the line q
 the function we call is actually a wrapper for another function.(s) This one reads from the line queue, passes to some analysis function(s), gets the results and sends to the result queue'''
 
 for x in range(threads):
-    worker = Process(target=phyml_wrapper, args = (windowQueue, resultQueue, windType, genoFormat,
+    worker = Process(target=phyml_wrapper, args = (windowQueue, resultQueue, windType,
                                                    model, opt, outgroup, phyml, minSites, minPerInd,
                                                    args.minSNPs, args.maxLDphase, bootstraps, args.crossVal, test,))
     worker.daemon = True
@@ -403,6 +400,7 @@ for window in windowGenerator:
         if test or verbose: print >> sys.stderr, "Waiting for queue to clear..."
     
     if test or verbose:
+        if test: sleep(0.5)
         print >> sys.stderr, "Sending window", windowsQueued, "to queue. Length:", window.seqLen()
     
     windowQueue.put((windowsQueued,window))
