@@ -36,10 +36,10 @@ python popgenWindows.py -w 50000 -m 5000 -g input.geno.gz -o output.csv.gz -f ph
 
 #### Notes
 
-Input is a `.geno` file as shown above. This can be gzipped (`.geno.gz`).
+* Input is a `.geno` file as shown above. This can be gzipped (`.geno.gz`).
 Output is a `.csv`. If you add `.gz` it will be gzipped.
 
-Genotypes can be incoded in various ways, as indicated by the `-f` flag.
+* Genotypes can be incoded in various ways, as indicated by the `-f` flag.
 
 `-f phased` means that genotypes include phase information (but they don't necessarily need to actually be phased):
 ```
@@ -61,9 +61,14 @@ scaffold1  1        A       G       G
 scaffold1  1        A       G       R
 ```
 
-If some samples are haploid and others are diploid, you can use one of the diploid formats, but indicate that certain samples are haploid by listing them after the `--haploid` flag. The script will force them to have haploid genotyps, and any apparently heterozygous genotype will be converted to `N`.
+* The window can be defined based on genomic coordinates (`--windType coord`) or the number of sites (`--windType sites`). Windows will not cross contig/scaffold boundaries.
 
-The script can run on multiple cores (`-T` flag). Try different numbers, as using too many can slow the script down (due to the difficulty in sorting the outputs coming from the different cores).
+* The most common source of errors here involve the `-m` (`--minSites`) flag. If you are useing coordinate windows and have any sites with missing data, then `-m` must be set to a value smaller than the window size. If you have reduced representation data such as RADseq, you will need a much lower `-m` value (more like 1% of the window size or even less).
+
+* If some samples are haploid and others are diploid, you can use one of the diploid formats, but indicate that certain samples are haploid by listing them after the `--haploid` flag. The script will force them to have haploid genotyps, and any apparently heterozygous genotype will be converted to `N`.
+
+* The script can run on multiple cores (`-T` flag). Try different numbers, as using too many can slow the script down (due to the difficulty in sorting the outputs coming from the different cores).
+
 
 ___
 ## Compute ABBA-BABA statistics in sliding windows
@@ -78,9 +83,9 @@ python ABBABABAwindows.py -g /zoo/disk1/shm45/vcf/set62/set62.chr21.DP5GQ30.AN10
 `python ABBABABAwindows.py -h` Will print a full list of command arguments.
 
 #### Notes
-This script shares several command arguments with the one above. And input formats are the same.
+* This script shares several command arguments with `popgenWindows.py`. And input formats are the same. Please see the notes for that script above.
 
-Four populations, with the names `P1`, `P2`, `P3` and `O` are requied.
+* Four populations, with the names `P1`, `P2`, `P3` and `O` are requied.
 
 ___
 ## Make trees for sliding windows
@@ -89,18 +94,23 @@ Two scripts in the `phylo/` directory will make trees in sliding windows: `phyml
 
 #### Example command
 ```bash
-python phyml_sliding_windows.py -T 10 -g input.phased.geno.gz --prefix output.phyml_bionj.w50 -w 50 --windType sites --model GTR --genoFormat phased 
+python phyml_sliding_windows.py -T 10 -g input.phased.geno.gz --prefix output.phyml_bionj.w50 -w 50 --windType sites --model GTR 
 ```
 `python phymlWindows.py -h` Will print a full list of command arguments.
 
 #### Notes
-Obvuously, you need to have Phyml (or RAxML) installed on your machine. You can direct the script to the location of the executable. I recommend using an unthreaded version, since each window tree will run very quickly.
+* Obvuously, you need to have Phyml (or RAxML) installed on your machine. You can direct the script to the location of the executable. I recommend using an unthreaded version, since each window tree will run very quickly.
 
-The window can be defined based on genomic coordinates (`--windType coord`) or the number of sites (`--windType sites`). Windows will not cross contig/scaffold boundaries.
+* The window can be defined based on genomic coordinates (`--windType coord`) or the number of sites (`--windType sites`). Windows will not cross contig/scaffold boundaries.
 
-Input formats can be either `phased` or `haplo`, as shown above. For the raxml script, you could also use `diplo` format, although I'm not sure whether the ambiguity codes will be used at all by RAxML. It is certainly better to use phased sequences if you can.
+* Genotypes need to be in either the `phased`, `haplo` or `diplo` formats shown above (`diplo` format is not recommended, as heterozygous genotypes will be treated as single genotypes with ambiguous bases, which are ignored by Phyml.
 
-To make neighbour-joining trees, use the Phyml script, and set `--optimise n`, which tells it not to do any ML optimisation.
+* For the raxml script, you could also use `diplo` format, although I'm not sure whether the ambiguity codes will be used at all by RAxML. It is certainly better to use phased sequences if you can.
+
+* If diploid genotypes are in the `phased` format, they will be split into haplotypes, and the suffixes '_A' and '_B' will be added to the sample names to distinguish the haplotypes.
+
+
+* To make neighbour-joining trees, use the Phyml script, and set `--optimise n`, which tells it not to do any ML optimisation.
 
 
 
