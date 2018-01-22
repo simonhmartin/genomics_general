@@ -87,6 +87,12 @@ python ABBABABAwindows.py -g /zoo/disk1/shm45/vcf/set62/set62.chr21.DP5GQ30.AN10
 
 * Four populations, with the names `P1`, `P2`, `P3` and `O` are requied.
 
+* *f<sub>d</sub>* gives meaningless values (<0 or >1) if *D* is negative. If there is no excess of shared derived alleles between P2 and P3 (indicated by a positive D), then the excess cannot be quantified. *f<sub>d</sub>* values for windows with negative *D* should therefore either be discarded or converted to zero, depending on your hypothesis. 
+
+* If you are interested in shared variation between P3 and P2 (positive *D*) **or** between P3 and P1 (negative *D*), then *f<sub>d</sub>* might not be the best approach. *f<sub>dM</sub>* is an alternatve statistic, devised by Milan Malinsky that is better suited to this scenario. It gives positive values for introgression between P3 and P2 and negative values for introgression between P3 and P1. However, my simulation tests show that *f<sub>dM</sub>* tends to underestimate the admixture proportion. Also, note that if introgression occurred between **both** P3 and P2 **and** P3 and P1 at the same locus, then it cannot be accurately quantified, because the signal of shared variation depends on either P1 or P2 being uninvolved.
+
+* If  a small number of SNPs is used per window, stochastic errors can cause *f<sub>d</sub>* to have meaningless values even when *D* is positive. Therefore, try to use a window size that allows at least 100 biallelic SNPs per window (see the *sitesUsed* column to see the number of biallelic SNPs available).
+
 #### Output
 
 
