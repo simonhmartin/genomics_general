@@ -90,18 +90,18 @@ python ABBABABAwindows.py -g /zoo/disk1/shm45/vcf/set62/set62.chr21.DP5GQ30.AN10
 ####Output
 
 
-|  Column Header  | Description |
-|: --- :| --- | 
-| `scaffold` | The scaffold the window is on (all windows are on a single scaffold) |
-| `start` | window start position (inclusive) |
-| `end` | window end position (NOTE, this can exceed the length of the scaffold) |
-| `sites` | Number of genotypes sites in the input file in each window |
-| `sitesUsed` | number of sites used to compute statistics (biallelic SNPs) |
-| `ABBA` | Pseudo count of ABBA sites (including polymorphic sites) (See [Martin et al. 2015](https://doi.org/10.1093/molbev/msu269) Equation 2) |
-| `BABA` | Pseudo count of BABA sites (including polymorphic sites) (See [Martin et al. 2015](https://doi.org/10.1093/molbev/msu269) Equation 3) |
-| `D` | D statistic (see [Durand et al. 2011](https://doi.org/10.1093/molbev/msr048) Equation 2) |
-| `fd` | fd admixture estimation (See [Martin et al. 2015](https://doi.org/10.1093/molbev/msu269) Equation 6) |
-| `fdM` | Malinsky's modified fd to accomodate admixture between either P1 and P3 or P2 and P3 (See [Malinsky et al. 2015](https://doi.org/10.1126/science.aac9927) Supplementart Material Page 8) |
+| Column Header | Description |
+| :-----------: | ----------- | 
+| `scaffold`     | The scaffold the window is on (all windows are on a single scaffold) |
+| `start`        | window start position (inclusive) |
+| `end`          | window end position (NOTE, this can exceed the length of the scaffold) |
+| `sites`        | Number of genotypes sites in the input file in each window |
+| `sitesUsed`    | number of sites used to compute statistics (biallelic SNPs) |
+| `ABBA`         | Pseudo count of ABBA sites (including polymorphic sites) (See [Martin et al. 2015](https://doi.org/10.1093/molbev/msu269) Equation 2) |
+| `BABA`         | Pseudo count of BABA sites (including polymorphic sites) (See [Martin et al. 2015](https://doi.org/10.1093/molbev/msu269) Equation 3) |
+| `D`            | D statistic (see [Durand et al. 2011](https://doi.org/10.1093/molbev/msr048) Equation 2) |
+| `fd`           | fd admixture estimation (See [Martin et al. 2015](https://doi.org/10.1093/molbev/msu269) Equation 6) |
+| `fdM`          | Malinsky's modified fd to accomodate admixture between either P1 and P3 or P2 and P3 (See [Malinsky et al. 2015](https://doi.org/10.1126/science.aac9927) Supplementart Material Page 8) |
 
 ___
 ## Make trees for sliding windows
