@@ -78,7 +78,7 @@ The script `ABBABABAwindows.py` performs analyses described in [Martin et al. 20
 #### Example command
 
 ```bash
-python ABBABABAwindows.py -g /zoo/disk1/shm45/vcf/set62/set62.chr21.DP5GQ30.AN100MAC1.diplo.gz -f diplo -o output.csv -w 100000 -m 5000 -s 100000 -p P1 A1,A2,A3,A4 -p P2 B1,B2,B3,B4 -p P3  C1,C2,C3,C4 -p O D1,D2,D3,D4 -T 10 --minData 0.5
+python ABBABABAwindows.py -g /zoo/disk1/shm45/vcf/set62/set62.chr21.DP5GQ30.AN100MAC1.diplo.gz -f diplo -o output.csv -w 100000 -m 100 -s 100000 -p P1 A1,A2,A3,A4 -p P2 B1,B2,B3,B4 -p P3  C1,C2,C3,C4 -p O D1,D2,D3,D4 -T 10 --minData 0.5
 ```
 `python ABBABABAwindows.py -h` Will print a full list of command arguments.
 
@@ -86,6 +86,22 @@ python ABBABABAwindows.py -g /zoo/disk1/shm45/vcf/set62/set62.chr21.DP5GQ30.AN10
 * This script shares several command arguments with `popgenWindows.py`. And input formats are the same. Please see the notes for that script above.
 
 * Four populations, with the names `P1`, `P2`, `P3` and `O` are requied.
+
+####Output
+
+
+|  Column Header  | Description |
+|: --- :| --- | 
+| `scaffold` | The scaffold the window is on (all windows are on a single scaffold) |
+| `start` | window start position (inclusive) |
+| `end` | window end position (NOTE, this can exceed the length of the scaffold) |
+| `sites` | Number of genotypes sites in the input file in each window |
+| `sitesUsed` | number of sites used to compute statistics (biallelic SNPs) |
+| `ABBA` | Pseudo count of ABBA sites (including polymorphic sites) (See [Martin et al. 2015](https://doi.org/10.1093/molbev/msu269) Equation 2) |
+| `BABA` | Pseudo count of BABA sites (including polymorphic sites) (See [Martin et al. 2015](https://doi.org/10.1093/molbev/msu269) Equation 3) |
+| `D` | D statistic (see [Durand et al. 2011](https://doi.org/10.1093/molbev/msr048) Equation 2) |
+| `fd` | fd admixture estimation (See [Martin et al. 2015](https://doi.org/10.1093/molbev/msu269) Equation 6) |
+| `fdM` | Malinsky's modified fd to accomodate admixture between either P1 and P3 or P2 and P3 (See [Malinsky et al. 2015](https://doi.org/10.1126/science.aac9927) Supplementart Material Page 8) |
 
 ___
 ## Make trees for sliding windows
@@ -99,7 +115,7 @@ python phyml_sliding_windows.py -T 10 -g input.phased.geno.gz --prefix output.ph
 `python phymlWindows.py -h` Will print a full list of command arguments.
 
 #### Notes
-* Obvuously, you need to have Phyml (or RAxML) installed on your machine. You can direct the script to the location of the executable. I recommend using an unthreaded version, since each window tree will run very quickly.
+* You need to have Phyml (or RAxML) installed on your machine. You can direct the script to the location of the executable. I recommend using an unthreaded version, since each window tree will run very quickly.
 
 * The window can be defined based on genomic coordinates (`--windType coord`) or the number of sites (`--windType sites`). Windows will not cross contig/scaffold boundaries.
 
