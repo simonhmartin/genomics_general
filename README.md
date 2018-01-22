@@ -87,7 +87,7 @@ The script `ABBABABAwindows.py` performs analyses described in [Martin et al. 20
 #### Example command
 
 ```bash
-python ABBABABAwindows.py -g /zoo/disk1/shm45/vcf/set62/set62.chr21.DP5GQ30.AN100MAC1.diplo.gz -f diplo -o output.csv -w 100000 -m 100 -s 100000 -p P1 A1,A2,A3,A4 -p P2 B1,B2,B3,B4 -p P3  C1,C2,C3,C4 -p O D1,D2,D3,D4 -T 10 --minData 0.5
+python ABBABABAwindows.py -g /zoo/disk1/shm45/vcf/set62/set62.chr21.DP5GQ30.AN100MAC1.diplo.gz -f phased -o output.csv -w 100000 -m 100 -s 100000 -p P1 A1,A2,A3,A4 -p P2 B1,B2,B3,B4 -p P3  C1,C2,C3,C4 -p O D1,D2,D3,D4 -T 10 --minData 0.5
 ```
 `python ABBABABAwindows.py -h` Will print a full list of command arguments.
 
