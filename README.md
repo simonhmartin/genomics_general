@@ -22,6 +22,15 @@ The script `parseVCF.py` in the `VCF_processing` directory, will convert vcf to 
 ```bash
 python parseVCF.py -i input.vcf.gz --skipIndels --minQual 30 --gtf flag=DP min=5 | gzip > output.geno.gz
 ```
+
+#### Notes
+
+* You can filter on any flag associated with the genotype, such as read depth (`DP`) and genotype likelihood (`PL`). Check the `FORMAT` column of your vcf file to see which flags are present. To add a genotype filter, add the argument `--gtf` followed by the flag title, minimum and/or maximum value, as in the example above.
+
+* By default the script outputs the genotype for each sample at each site. You can also output a different field, such as `DP`, as long as it is present in the `FORMAT` column of the vcf. e.g. `--field DP`
+
+* `minQual` refers to the `QUAL` column in the vcf, and not individual genotype qualities, for which you should use the `--gtf` argument.
+
 ___
 
 ## Diversity and divergence analyses in sliding windows
