@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 #script that can read and write sequence files in fasta and phylip format
 # reads from stdin and writes to stdout
@@ -7,18 +7,58 @@ import sys
 import argparse
 import genomics
 
+def parseRegionText(regionText):
+    splitText = regionText.split(":")
+    seqName = splitText[0]
+    if len(splitText) < 3 or splitText[2] == "": ori = "+"
+    else: ori = splitText[2]
+    if ori not in "+-": raise ValueError("Orientation must be + or -")
+    try:
+        fromTo = [int(x) for x in splitText[1].split("-")]
+        if len(fromTo) == 1: fromTo.append(None)
+        if fromTo[1] != None and fromTo[0] > fromTo[1]:
+            fromTo = fromTo[::-1]
+            ori = "-"
+        return (seqName,fromTo[0],fromTo[1],ori,)
+    except: return (seqName,None,None,ori,)
+
+
+def parseRegionList(regionList):
+    seqName = regionList[0]
+    if len(regionList) < 4: ori = "+"
+    else: ori = regionList[3]
+    if ori not in "+-": raise ValueError("Orientation must be + or -")
+    try:
+        fromTo = [int(x) for x in regionList[1:3]]
+        if len(fromTo) == 1: fromTo.append(None)
+        if fromTo[1] != None and fromTo[0] > fromTo[1]:
+            fromTo = fromTo[::-1]
+            ori = "-"
+        return (seqName,fromTo[0],fromTo[1],ori,)
+    except: return (seqName,None,None,ori,)
+
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("-p", "--phylipIn", help="Input is phylip format", action = "store_true")
 parser.add_argument("-P", "--phylipOut", help="Output is phylip format", action = "store_true")
 
-parser.add_argument("-n", "--seqNames", help="Output only these sequences (comma separated)", action = "store", metavar = "names")
+parser.add_argument("-r", "--regions",nargs="+", action = "store", metavar="region",
+                    help="Output regions and orientation e.g. 'SEQX:1001-1500:+' (FROM, TO and orientation are optional)")
+
+parser.add_argument("-f", "--regionsFile", action = "store",
+                    help="File of regions to output. Seq Name and optionally from and to and orintation.Tab separated")
 
 parser.add_argument("-l", "--lineLen", help="Output line length", type = int, action = "store", metavar = "integer", default = 100)
 
+parser.add_argument("--extendLeft", help="Extend left by", type = int, action = "store", metavar = "integer", default=0)
+parser.add_argument("--extendRight", help="Extend right by", type = int, action = "store", metavar = "integer", default=0)
+
 parser.add_argument("--truncateNames", help="Truncate names at first whitespace", action = "store_true")
 
-parser.add_argument("-s", "--start", help="Start position for subsection", type = int, action = "store", metavar = "integer")
-parser.add_argument("-e", "--end", help="End position for subsection", type = int, action = "store", metavar = "integer")
+parser.add_argument("--preserveNames", action = "store_true",
+                    help = "Do not add start and end position to names of chopped sequences")
+
 
 args = parser.parse_args()
 #args = parser.parse_args("-n 5 -t test.trees -o test.topos.txt -w test.weights.B.csv -g A a,b,c -g B d,e,f -g C g,h,i -g D j,k,l".split())
@@ -41,14 +81,35 @@ else: names, seqs = genomics.parsePhylip(allText)
 
 if args.truncateNames: names = [name.split()[0] for name in names]
 
-if args.seqNames:
-    outNames = args.seqNames.split(",")
-    keep = [names.index(name) for name in outNames]
-    names = [names[k] for k in keep]
-    seqs = [seqs[k] for k in keep]
+regions = [parseRegionText(r) for r in args.regions] if args.regions else []
 
-if args.start or args.end: seqs = [s[args.start-1:args.end] for s in seqs]
+if args.regionsFile:
+        with open(args.regionsFile, "r") as rf:
+            for line in rf: regions.append(parseRegionList(line.split()))
 
-sys.stdout.write(genomics.makeAlnString(names=names,seqs=seqs,outFormat=outFormat,lineLen=l))
+#only filter and chop sequences if necessary
+if len(regions) >= 1:
+    outNames = []
+    outSeqs = []
+    for seqName,start,end,ori in regions:
+        i = names.index(seqName)
+        outNames.append(seqName)
+        if start != None or end != None or ori == "-":
+            seqLen = len(seqs[i])
+            if start == None: start = 1
+            if end == None: end = seqLen
+            start = max(1,start-args.extendLeft)
+            end = min(seqLen,end+args.extendRight)
+            if ori == "-": outSeqs.append(genomics.revTrans(seqs[i][start-1:end]))
+            else: outSeqs.append(seqs[i][start-1:end])
+            if not args.preserveNames: outNames[-1] = outNames[-1] + ":" + str(start) + "-" + str(end) + ":" + ori
+        else: outSeqs.append(seqs[i])
+else:
+    outNames = names
+    outSeqs = seqs
+
+sys.stderr.write("\nWriting %i sequences.\n" %len(outNames))
+
+sys.stdout.write(genomics.makeAlnString(names=outNames,seqs=outSeqs,outFormat=outFormat,lineLen=l))
 
 
