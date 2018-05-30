@@ -4,18 +4,11 @@
 
 ## Contents
 
-* [Parsing VCF files](#Parsing-VCF-files)
-* [Diversity and divergence analyses in sliding windows](#Diversity-and-divergence-analyses-in-sliding-windows)
-* [Distance matrix](#Distance-matrix)
-* [ABBA-BABA statistics in sliding windows](#ABBA-BABA-statistics-in-sliding-windows)
-* [Trees for sliding windows](#Trees-for-sliding-windows)
-
-* [Common usage](#common-usage)
-
-## Common usage
-
-Let's think we have two arrays:  **photos** and **ads**.
-
+* [Parsing VCF files](#parsing-vcf-files)
+* [Diversity and divergence analyses in sliding windows](#diversity-and-divergence-analyses-in-sliding-windows)
+* [Distance matrix](#distance-matrix)
+* [ABBA-BABA statistics in sliding windows](#abba-baba-statistics-in-sliding-windows)
+* [Trees for sliding windows](#trees-for-sliding-windows)
 
 ___
 
