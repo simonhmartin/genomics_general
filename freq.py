@@ -30,7 +30,8 @@ def freqs_wrapper(windowQueue, resultQueue, genoFormat, sampleData, minData, tar
             outgroup = sampleData.popNames[-1]
             inAln = aln.subset(groups = sampleData.popNames[:-1])
             baseColumns = np.array([genomics.derivedAllele(inAln.numArray[:,i][inAln.nanMask[:,i]],
-                                                           popAlns[outgroup].numArray[:,i][popAlns[outgroup].nanMask[:,i]])
+                                                           popAlns[outgroup].numArray[:,i][popAlns[outgroup].nanMask[:,i]],
+                                                           numeric=True)
                                     for i in xrange(aln.l)]).reshape([aln.l,1])
             
         else:
