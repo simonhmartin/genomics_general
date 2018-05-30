@@ -1,6 +1,14 @@
 #### This is a collection of scripts for a range of genomic data processing and analysis.
-#### Below are notes about some useful tools.
+#### Below are notes about *some* useful tools. Not everything is documented yet, but most scripts have some help information if you type `python script.py -h`
 
+
+## Contents
+
+* [Parsing VCF files](#Parsing-VCF-files)
+* [Diversity and divergence analyses in sliding windows](#Diversity-and-divergence-analyses-in-sliding-windows)
+* [Distance matrix](#Distance-matrix)
+* [ABBA-BABA statistics in sliding windows](#ABBA-BABA-statistics-in-sliding-windows)
+* [Trees for sliding windows](#Trees-for-sliding-windows)
 ___
 
 ## Parsing VCF files
@@ -85,7 +93,7 @@ scaffold1  1        A       G       R
 * The script can run on multiple cores (`-T` flag). Try different numbers, as using too many can slow the script down (due to the difficulty in sorting the outputs coming from the different cores).
 
 ___
-## Distance matrix (whole genome OR windows)
+## Distance matrix
 
 The script `distMat.py`	 computes a distance matrix among all pairs of individuals. This can be computed either for the entire infput file or in windows, as in the popgenWindows script above. This works for samples of any ploidy or mix of ploidies. For ploidy > 1, the pairwise diatance will be the average diatance among all haplotypes in the two individuals.
 
@@ -108,7 +116,7 @@ python distMat.py -g input.geno.gz -f phased --windType cat -o output.dist
 * To make separate matrices for windows, use one of the window type options described above. There will still be a single output file, but with separate matrices separated by blank lines.
 
 ___
-## Compute ABBA-BABA statistics in sliding windows
+## ABBA-BABA statistics in sliding windows
 
 The script `ABBABABAwindows.py` performs analyses described in [Martin et al. 2015, MBE](http://mbe.oxfordjournals.org/content/32/1/244.abstract?sid=a3d00925-b3fe-4214-b142-256739082832), compurting the *D* statistic and *f* estimators in windows across the genome. Like the script above, it requires `genomics.py`.
 
@@ -147,7 +155,7 @@ python ABBABABAwindows.py -g /zoo/disk1/shm45/vcf/set62/set62.chr21.DP5GQ30.AN10
 | `fdM`          | Malinsky's modified statistic, *f<sub>dM</sub>* to accomodate admixture between either P1 and P3 or P2 and P3 (See [Malinsky et al. 2015](https://doi.org/10.1126/science.aac9927) Supplementart Material Page 8) |
 
 ___
-## Make trees for sliding windows
+## Trees for sliding windows
 
 Two scripts in the `phylo/` directory will make trees in sliding windows: `phymlWindows.py` and `raxmlWindows.py`. As the names suggest they use [Phyml](http://www.atgc-montpellier.fr/phyml/) and [RAxML](http://sco.h-its.org/exelixis/web/software/raxml/), respectively.
 
