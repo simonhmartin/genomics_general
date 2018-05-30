@@ -70,7 +70,13 @@ scaffold1  1        A       G       G
 scaffold1  1        A       G       R
 ```
 
-* The window can be defined based on genomic coordinates (`--windType coord`) or the number of sites (`--windType sites`). Windows will not cross contig/scaffold boundaries.
+* There are three options for defining the windows to be analysed, using the `--windType` argument.
+
+| Wndow Type | Description |
+| :-----------: | ----------- | 
+| `coordinate`     | Windows will cover a fixed range in the genome, which is defined as the window size. If there is missing data, this can lead to variable numbers of sites used for each window. |
+| `sites`        | Each window will have the same number of sites. If there is missing data, this can lead to different absolute sizes for windows in terms of genome coordiantes. |
+| `predefined`          | This will analyse predefined windows provided using the `--windCoords` flag. |
 
 * The most common source of errors here involve the `-m` (`--minSites`) flag. If you are useing coordinate windows and have any sites with missing data, then `-m` must be set to a value smaller than the window size. If you have reduced representation data such as RADseq, you will need a much lower `-m` value (more like 1% of the window size or even less).
 
@@ -78,6 +84,28 @@ scaffold1  1        A       G       R
 
 * The script can run on multiple cores (`-T` flag). Try different numbers, as using too many can slow the script down (due to the difficulty in sorting the outputs coming from the different cores).
 
+___
+## Distance matrix (whole genome OR windows)
+
+The script `distMat.py`	 computes a distance matrix among all pairs of individuals. This can be computed either for the entire infput file or in windows, as in the popgenWindows script above. This works for samples of any ploidy or mix of ploidies. For ploidy > 1, the pairwise diatance will be the average diatance among all haplotypes in the two individuals.
+
+
+#### Example Command
+
+```bash
+python distMat.py -g input.geno.gz -f phased --windType cat -o output.dist
+```
+`python distMat.py -h` will print a list of command options.
+
+#### Notes
+
+* This script shares several command arguments with `popgenWindows.py`. And input formats are the same. Please see the notes for that script above.
+
+* Output format has three otptions: `raw`, `phylip` and `nexus`.
+
+* To make a single matrix for the entire input file, use `--windType cat`
+
+* To make separate matrices for windows, use one of the window type options described above. There will still be a single output file, but with separate matrices separated by blank lines.
 
 ___
 ## Compute ABBA-BABA statistics in sliding windows
