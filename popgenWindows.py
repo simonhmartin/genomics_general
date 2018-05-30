@@ -20,7 +20,7 @@ from time import sleep
 
 '''A function that reads from the window queue, calls some other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using. This is the function that will run on each of the N cores.'''
-def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, minSites, stats, doPops, skipPairs, indHet, addWindowID=False):
+def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, minSites, stats, doPops, skipPairs, indPairDist, indHet, addWindowID=False):
     while True:
         windowNumber,window = windowQueue.get() # retrieve window
         if windType == "coordinate" or windType == "predefined":
@@ -32,10 +32,13 @@ def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, mi
             Aln = genomics.genoToAlignment(window.seqDict(), sampleData, genoFormat = genoFormat)
             statsDict = {}
             if doPops: statsDict.update(genomics.popDiv(Aln, doPairs = not skipPairs))
+            if indPairDist:
+                pairDistDict = Aln.indPairDists()
+                for i,j in itertools.combinations_with_replacement(sorted(pairDistDict.keys()),2):
+                    statsDict["_".join(["d",i,j])] = pairDistDict[i][j]
             if indHet:
                 hetDict = Aln.sampleHet()
-                for key in hetDict.keys(): hetDict["het_" + key] = hetDict.pop(key)
-                statsDict.update(hetDict)
+                for key in hetDict.keys(): statsDict["het_" + key] = hetDict[key]
             values = [round(statsDict[stat], 4) for stat in stats]
         else:
             isGood = False
@@ -115,6 +118,7 @@ parser.add_argument("--samples", help="Samples to include for individual analysi
 parser.add_argument("--haploid", help="Samples that are haploid (comma separated)", action = "store", metavar = "sample names")
 parser.add_argument("--inferPloidy", help="Ploidy will be inferred in each window (NOT RECOMMENED)", action = "store_true")
 parser.add_argument("--skipPairs", help="Do not do pairwise statistics", action = "store_true")
+parser.add_argument("--indPairDist", help="Calculate distance between pairs of individuals", action = "store_true")
 parser.add_argument("--indHet", help="Calculate individual heterozygosity", action = "store_true")
 
 parser.add_argument("-g", "--genoFile", help="Input genotypes file", required = False)
@@ -201,7 +205,7 @@ if args.samples is not None:
     allInds = list(set(allInds + args.samples.split(",")))
     args.indHet = True
 
-assert doPops or args.indHet, "Populations not specified, and individual het not requested. Nothing to do."
+assert doPops or args.indHet or args.indPairDist, "Populations not specified, and individual het or dists not requested. Nothing to do."
 
 #if populations and samples not specified, just get all sample names from file
 if len(allInds) == 0:
@@ -209,6 +213,7 @@ if len(allInds) == 0:
         allInds = gf.readline().split()[2:]
 
 if args.inferPloidy: ploidyDict = dict(zip(allInds,[None]*len(allInds)))
+elif args.genoFormat == "haplo": ploidyDict = dict(zip(allInds,[1]*len(allInds)))
 else: ploidyDict = dict(zip(allInds,[2]*len(allInds)))
 
 if args.haploid:
@@ -237,6 +242,8 @@ else: outFile.write("windowID,scaffold,start,end,mid,sites,")
 stats = []
 
 if args.indHet: stats += ["het_" + n for n in allInds]
+
+if args.indPairDist: stats += ["_".join(["d",i,j]) for i,j in itertools.combinations_with_replacement(sorted(allInds),2)]
 
 if doPops:
     stats += ["pi_" + n for n in popNames]
@@ -289,7 +296,7 @@ of course these will only start doing anything after we put data into the line q
 the function we call is actually a wrapper for another function.(s) This one reads from the line queue, passes to some analysis function(s), gets the results and sends to the result queue'''
 for x in range(threads):
   worker = Process(target=stats_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, sampleData, minSites,
-                                                 stats, doPops, args.skipPairs, args.indHet,args.addWindowID))
+                                                 stats, doPops, args.skipPairs, args.indPairDist,args.indHet,args.addWindowID))
   worker.daemon = True
   worker.start()
   print >> sys.stderr, "started worker", x
