@@ -31,6 +31,8 @@ seqNumDict = {"A":0,"C":1,"G":2,"T":3,"N":-999}
 
 numSeqDict = {0:"A",1:"C",2:"G",3:"T",-999:"N"}
 
+#translation for conversion of missing bases to gaps
+missingtrans = string.maketrans("Nn", "--")
 
 #translation table for bases
 seqtrans = string.maketrans("ACGTKMRYVHBDN", "TGCAMKYRBDVHN")
@@ -243,14 +245,28 @@ class GenomeSite:
         for sample in self.sampleNames:
             self.genotypes[sample] = Genotype(genoDict[sample], genoFormat=genoFormat,
                                               ploidy = self.ploidy[sample],forcePloidy=forcePloidy)
-    
-    def asList(self, samples = None, pop = None, mode = "phased", alleles = None, codeDict=None, missing=None):
+        
+    def asList(self, samples = None, pop = None, mode = "phased", alleles = None,
+               codeDict=None, missing=None, alleleOrder=None):
         if pop: samples = self.pops[pop]
         if not samples: samples = self.sampleNames
         if mode == "bases":
-            return [a for alleles in [self.genotypes[sample].alleles for sample in samples] for a in alleles]
+            #if we want the bases returned in order of their overall frequency
+            if alleleOrder == "freq":
+                siteAlleles = self.alleles(samples=samples,byFreq = True) + ["N"]
+                return [a for sample in samples for a in sorted(self.genotypes[sample].alleles, key=lambda x: siteAlleles.index(x))]
+            #otherwise just return the bases as they appear
+            else:
+                return [a for alleles in [self.genotypes[sample].alleles for sample in samples] for a in alleles]
         elif mode == "alleles": #just bases with no phase
-            return [self.genotypes[sample].alleles for sample in samples]
+            #if we want the bases returned in order of their overall frequency
+            if alleleOrder == "freq":
+                siteAlleles = self.alleles(samples=samples,byFreq = True) + ["N"]
+                return ["".join(sorted(self.genotypes[sample].alleles,
+                                                                 key=lambda x: siteAlleles.index(x))) for sample in samples]
+            #otherwise just return the bases as they appear
+            else:
+                return [self.genotypes[sample].alleles for sample in samples]
         if mode == "numeric":
             return np.concatenate([self.genotypes[sample].numAlleles for sample in samples])
         elif mode == "numAlleles": #numpy array of numeric alleles
@@ -339,12 +355,15 @@ def binBaseFreqs(numArr, asCounts = False):
         else: return 1.* np.bincount(numArr, minlength=4) / n
 
 
-def derivedAllele(inBases, outBases):
+def derivedAllele(inBases, outBases, maxOneDerivedAllele=True, numeric=False):
     outAlleles = np.unique(outBases)
     inAlleles = np.unique(inBases)
-    if len(outAlleles) == 1 and len(inAlleles) == 2 and np.any(outAlleles[0] == inAlleles):
+    if maxOneDerivedAllele and len(outAlleles) == 1 and len(inAlleles) == 2 and np.any(outAlleles[0] == inAlleles):
         return inAlleles[inAlleles != outAlleles[0]][0]
-    else: return np.nan
+    elif len(outAlleles) == 1 and len(inAlleles) >= 2 and np.any(outAlleles[0] == inAlleles):
+        return inAlleles[inAlleles != outAlleles[0]]
+    elif numeric: return np.nan
+    else: "N"
 
 
 def minorAllele(bases):
@@ -430,8 +449,9 @@ def inHWE(genotypes, P_value, side = "both", verbose = False):
     else: return True
 
 
-def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAlleles=float("inf"),minVarCount=None,
-             maxHet=None,minFreq=None,maxFreq=None,HWE_P=None,HWE_side="both",fixed=False,nearlyFixedDiff=None):
+def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAlleles=float("inf"),
+             minPopAlleles=None,maxPopAlleles=None,minVarCount=None,maxHet=None,minFreq=None,maxFreq=None,
+             HWE_P=None,HWE_side="both",fixed=False,nearlyFixedDiff=None):
     if not samples: samples = site.sampleNames
     #check sufficient number of non-N calls
     if site.nonMissing() < minCalls: return False
@@ -466,11 +486,19 @@ def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAllel
                 popCalls = sum([site.genotypes[sample].isMissing()==False for sample in site.pops[popName]])
                 if popCalls < minPopCalls[popName]: return False
         #if we want fixed differences only and there are two or more pops specified
-        if fixed:
-            #all pops must have only one allele, but taken together must have more than one
+        if fixed or minPopAlleles or maxPopAlleles:
+            #if fixed all pops must have only one allele, but taken together must have more than one
             allelesByPop = [site.alleles(pop=popName) for popName in popNames]
-            if not (set([len(popAlleles) for popAlleles in allelesByPop]) == set([1]) and
-                    len(set([a for popAlleles in allelesByPop for a in popAlleles])) > 1): return False
+            if fixed and not (len(set(map(len, allelesByPop))) == 1 and
+                              len(set([a for popAlleles in allelesByPop for a in popAlleles]))) > 1: return False
+            
+            #otherwise 
+            if minPopAlleles or maxPopAlleles:
+                if minPopAlleles == None: minPopAlleles = dict(zip(popNames, [0]*len(popNames)))
+                if maxPopAlleles == None: maxPopAlleles = dict(zip(popNames, [4]*len(popNames)))
+                for x in range(len(popNames)):
+                    if not minPopAlleles[popNames[x]] <= len(allelesByPop[x]) <= maxPopAlleles[popNames[x]]: return False
+        
         #if we want nearly fixed differences, we need to get pop freqs and find any freq difference big enough
         elif nearlyFixedDiff is not None:
             popFreqs = [site.baseFreqs(pop=popName) for popName in popNames]
@@ -558,6 +586,9 @@ class Alignment:
             self.groups = np.array([None]*self.N) #groups is just a list of names, giving the group name for each sample
             self.indGroupDict = dict(zip(self.names, [makeList(g) for g in self.groups]))
             self.groupIndDict = {}
+        
+        #we make a None object for distance matrix, but if any dist matrix type function is run, this will be filled
+        self._distMat_ = None
     
     def subset(self, indices = None, names = None, groups = None):
         if indices is None: indices = []
@@ -582,23 +613,49 @@ class Alignment:
     
     def numColumn(self,x): return self.numArray[:,x]
     
-    def distMatrix(self):
-        distMat = np.zeros((self.N,self.N))
-        for i in range(self.N - 1):
-            for j in range(i + 1, self.N):
-                nanMask = self.nanMask[i,:] & self.nanMask[j,:]
-                distMat[i,j] = distMat[j,i] = numHamming(self.numArray[i,:][nanMask], self.numArray[j,:][nanMask])
-        return distMat
-    
     def pairDist(self, i, j):
         nanMask = self.nanMask[i,:] & self.nanMask[j,:]
         return numHamming(self.numArray[i,:][nanMask], self.numArray[j,:][nanMask])
     
+    def distMatrix(self):
+        distMat = np.zeros((self.N,self.N))
+        for i in range(self.N - 1):
+            for j in range(i + 1, self.N):
+                distMat[i,j] = distMat[j,i] = self.pairDist(i,j)
+        self._distMat_ = distMat
+        return distMat
+    
     def sampleHet(self, sampleNames=None, asList = False):
         if sampleNames is None: sampleNames,sampleIndices = uniqueIndices(self.sampleNames, preserveOrder=True)
         else: sampleIndices = [np.where(self.sampleNames == sampleName)[0] for sampleName in sampleNames]
-        hets = [self.pairDist(x[0],x[1]) if len(x)==2 else np.NaN for x in sampleIndices]
+        #if a pre-computed distance matrix is available, use that
+        if self._distMat_ != None:
+            hets = [self._distMat_[x[0],x[1]] if len(x)==2 else np.NaN for x in sampleIndices]
+        #otherwise compute pairwise distances (i.e. entire matrix not needed)
+        else:
+            hets = [self.pairDist(x[0],x[1]) if len(x)==2 else np.NaN for x in sampleIndices]
         return dict(zip(sampleNames,hets)) if not asList else hets
+    
+    #makes a dict of average distance among samples.
+    #if all are haploid, this is just a dictionary of the output of distMatrix()
+    #if some have ploidy > 1, this will average distance among sample haplotypes
+    def indPairDists(self, asDict=True):
+        distMat = self.distMatrix() if self._distMat_ == None else self._distMat_ 
+        sampleNames,sampleIndices = uniqueIndices(self.sampleNames, preserveOrder=True)
+        n = len(sampleNames)
+        if asDict:
+            pairDists = {}
+            for sampleName in sampleNames: pairDists[sampleName] = {} 
+            for i,j in itertools.product(range(n),repeat=2):
+                pairDists[sampleNames[i]][sampleNames[j]] = np.mean(distMat[sampleIndices[i],sampleIndices[j]])
+            
+            return pairDists
+        else:
+            indDistMat = np.zeros(n,n)
+            for i,j in itertools.combinations_with_replacement(range(n),2):
+                    indDistMat[i,j] = indDistMat[j,i] = np.mean(distMat[sampleIndices[i],sampleIndices[j]])
+            return indDistMat
+    
     
     def varSites(self, indices=None, names=None):
         if names is not None: indices = np.where(np.in1d(aln.names,names))[0]
@@ -636,7 +693,7 @@ def genoToAlignment(seqDict, sampleData=None, genoFormat = "diplo", positions = 
     #first pseudo phase all seqs if necessary
     for indName in seqDict.keys():
         seqList = splitSeq(seqDict[indName], genoFormat)
-        ploidy = sampleData.ploidy[indName] if indName in sampleData.ploidy else len(seqList)
+        ploidy = sampleData.ploidy[indName] if indName in sampleData.ploidy and sampleData.ploidy[indName] != None else len(seqList)
         #print seqList
         if ploidy is not None: assert len(seqList) == ploidy, "Sample ploidy (" + str(ploidy) + ") doesn't match number of sequences (" + str(len(seqList)) + ")"
         if ploidy != 1:
@@ -794,7 +851,8 @@ class SampleData:
 
 
 def popDiv(Aln, doPairs = True):
-    distMat = Aln.distMatrix()
+    #get distance matrix unless a precomputed one is available
+    distMat = Aln._distMat_ if Aln._distMat_ != None else Aln.distMatrix()
     np.fill_diagonal(distMat, np.NaN) # set all same-with-same to Na
     
     pops,indices = np.unique(Aln.groups, return_inverse = True)
@@ -1579,7 +1637,7 @@ def nonOverlappingSitesWindows(genoFile, windSites, names = None, splitPhased=Fa
 
 
 #function to read entire genoFile into a window-like object
-def parseGenoFile(genoFile, names = None, includePositions = False, splitPhased=False, ploidy=None, headerLine = None):
+def parseGenoFile(genoFile, names = None, includePositions = False, splitPhased=False, ploidy=None):
     #get file headers
     headers = genoFile.readline().split()
     allNames = headers[2:]
@@ -1611,11 +1669,12 @@ def subset(things,subLen):
     return [things[starts[i]:ends[i]] for i in range(len(starts))]
 
 
-def makeAlnString(names=None, seqs=None, seqDict=None, outFormat="phylip", lineLen=None):
+def makeAlnString(names=None, seqs=None, seqDict=None, outFormat="phylip", lineLen=None, NtoGap=False):
     assert outFormat=="phylip" or outFormat=="fasta"
     if seqDict: names, seqs = zip(*seqDict.items())
     else: assert len(names) == len(seqs)
     seqs = ["".join(s) for s in seqs]
+    if NtoGap: seqs = [seq.translate(missingtrans) for seq in seqs]
     output = []
     nSamp = len(names)
     seqLen = max(map(len,seqs))
@@ -1661,6 +1720,30 @@ def parsePhylip(string, asList=False):
     seqs = [["".join([lineParts[y][1] for y in x]) for x in w] for w in seqIdx] 
     if not asList and len(names) == 1: return (names[0], seqs[0])
     else: return zip(names,seqs)
+
+
+############### writing distance matrices
+
+def makeDistMatString(distArray, roundTo=10):
+    output += "\n".join([" ".join(i) for i in distArray.round(roundTo).astype(str)])
+    return output
+
+def makeDistMatPhylipString(distArray, names, roundTo=10):
+    output = str(distArray.shape[0]) + "\n"
+    for i in range(len(names)):
+        output += str(names[i]) + "  " + " ".join(distArray[i,:].round(roundTo).astype(str)) + "\n"
+    return output
+
+def makeDistMatNexusString(distArray, names, roundTo=10):
+    output = "\nBEGIN Taxa;\nDIMENSIONS ntax={};\nTAXLABELS\n".format(len(names))
+    for i in range(len(names)):
+        output += "[{}] '{}'\n".format(i+1,names[i])
+    output += ";\nEND; [Taxa]\n"
+    output += "\nBEGIN Distances;\nDIMENSIONS ntax={};\nFORMAT labels=left diagonal triangle=both;\nMATRIX\n".format(len(names))
+    for i in range(len(names)):
+        output += "[{}] '{}'    ".format(i+1,names[i]) + " ".join(distArray[i,:].round(roundTo).astype(str)) + "\n"
+    output += ";\nEND; [Distances]\n"
+    return output
 
 
 ############### working with fai
