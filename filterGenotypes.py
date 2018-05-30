@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import argparse, sys, gzip, random
+import argparse, sys, gzip, string
 
 from multiprocessing import Process, Queue
 from multiprocessing.queues import SimpleQueue
@@ -14,8 +14,8 @@ from time import sleep
 #######################################################################################################################
 
 '''main worker function. This will watch the inQueue for pods, and pass lines from these pods to be parsed and filtered, before packaging back into a pod and sending on to the resultQueue'''
-def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,headers,include,exclude,samples,minCalls,minPopCalls,
-                    minAlleles,maxAlleles,minVarCount,maxHet,minFreq,maxFreq,
+def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,alleleOrder,headers,include,exclude,samples,
+                    minCalls,minPopCalls,minAlleles,maxAlleles,minPopAlleles,maxPopAlleles,minVarCount,maxHet,minFreq,maxFreq,
                     HWE_P,HWE_side,popDict,ploidyDict,fixed,nearlyFixedDiff,forcePloidy,thinDist,noTest):
     sampleIndices = [headers.index(s) for s in samples]
     while True:
@@ -39,11 +39,11 @@ def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,headers,in
                     goodSite = False
                 elif pos - lastPos < thinDist: goodSite = False
             if goodSite and not noTest: goodSite = genomics.siteTest(site,samples=samples,minCalls=minCalls,minPopCalls=minPopCalls,
-                                               minAlleles=minAlleles,maxAlleles=maxAlleles,minVarCount=minVarCount,
-                                               maxHet=maxHet,minFreq=minFreq,maxFreq=maxFreq,HWE_P=HWE_P,HWE_side=HWE_side,
+                                               minAlleles=minAlleles,maxAlleles=maxAlleles,minPopAlleles=minPopAlleles,maxPopAlleles=maxPopAlleles,
+                                               minVarCount=minVarCount,maxHet=maxHet,minFreq=minFreq,maxFreq=maxFreq,HWE_P=HWE_P,HWE_side=HWE_side,
                                                fixed=fixed,nearlyFixedDiff=nearlyFixedDiff)
             if goodSite:
-                outLine = "\t".join(objects[:2] + [str(g) for g in site.asList(samples, mode=outputGenoFormat)]) + "\n"
+                outLine = "\t".join(objects[:2] + [str(g) for g in site.asList(samples, mode=outputGenoFormat, alleleOrder=alleleOrder)]) + "\n"
                 outPod.append((lineNumber,outLine))
                 if thinDist: lastPos = int(objects[1])
             #if verbose: print >> sys.stderr, objects[0], objects[1], "passed: ", goodSite
@@ -125,8 +125,13 @@ parser.add_argument("-t", "--threads", help="Analysis threads", type=int, action
 parser.add_argument("--verbose", help="Verbose output.", action = "store_true")
 
 parser.add_argument("-if", "--inputGenoFormat", help="Genotype format [otherwise will be inferred (slower)]", action = "store",choices = ["phased","diplo","alleles"], default="phased")
-parser.add_argument("-of", "--outputGenoFormat", help="Genotype format for output", action = "store", choices = ("phased","diplo","alleles","coded","count"), default = "phased")
 
+#ouput
+parser.add_argument("-of", "--outputGenoFormat", action = "store", default = "phased",
+                    choices = ("phased","diplo","bases","alleles","coded","count"), help="Genotype format for output")
+
+parser.add_argument("--alleleOrder", action = "store", default = None,
+                    choices = ("freq",), help="Order sample alleles by frequency when outputting 'bases' or 'alleles'")
 
 #specific samples
 parser.add_argument("-s", "--samples", help="sample names (separated by commas)", action='store')
@@ -159,7 +164,9 @@ parser.add_argument("--maxFreq", help="Maximum variant frequency", type=float, a
 parser.add_argument("--HWE", help="Hardy-Weinberg equalibrium test P-value and side", action = "store", nargs = 2, metavar = ("P-value", "'top'/'bottom'/'both'"))
 
 #population-specific filtering arguments
-parser.add_argument("--minPopCalls", help="Minimum number of good genotype calls per pop (comma separated)", action = "store", metavar = "integer")
+parser.add_argument("--minPopCalls", help="Minimum number of good genotype calls per pop", nargs="+", action = "store", type=int)
+parser.add_argument("--minPopAlleles", help="Minimum number of alleles per site per pop", nargs="+", action = "store", type=int)
+parser.add_argument("--maxPopAlleles", help="Maximum number of alleles per site per pop", nargs="+",action = "store", type=int)
 parser.add_argument("--fixedDiffs", help="Only variants where differences are fixed between pops", action = "store_true")
 parser.add_argument("--nearlyFixedDiff", help="Only variants where frequency diff between any pops is > x", action = "store", type=float)
 
@@ -218,6 +225,8 @@ else:
 popDict = {}
 popNames = []
 minPopCallsDict = None
+minPopAllelesDict = None
+maxPopAllelesDict = None
 if args.pop:
     
     for pop in args.pop:
@@ -231,11 +240,25 @@ if args.pop:
                 if pop in popDict and ind not in popDict[pop]: popDict[pop].append(ind)
     
     if args.minPopCalls:
-        minPopCalls = [int(i) for i in args.minPopCalls.split(",")]
-        if len(minPopCalls) == 1: minPopCalls = minPopCalls*len(args.pop)
-        assert len(minPopCalls) == len(args.pop) 
-        minPopCallsDict = dict(zip([pop[0] for pop in args.pop],minPopCalls))
-
+        minPopCalls = args.minPopCalls
+        if len(minPopCalls) == 1: minPopCalls = minPopCalls*len(popNames)
+        assert len(minPopCalls) == len(popNames)
+        minPopCallsDict = dict(zip(popNames,minPopCalls))
+    
+    if args.minPopAlleles:
+        minPopAlleles = args.minPopAlleles
+        if len(minPopAlleles) == 1: minPopAlleles = minPopAlleles*len(popNames)
+        assert len(minPopAlleles) == len(popNames)
+        minPopAllelesDict = dict(zip(popNames,minPopAlleles))
+        if args.maxPopAlleles == None: maxPopAllelesDict = dict(zip(popNames,[4]*len(popNames)))
+    
+    if args.maxPopAlleles:
+        maxPopAlleles = args.maxPopAlleles
+        if len(maxPopAlleles) == 1: maxPopAlleles = maxPopAlleles*len(popNames)
+        assert len(maxPopAlleles) == len(popNames)
+        maxPopAllelesDict = dict(zip(popNames,maxPopAlleles))
+        if args.minPopAlleles == None: minPopAllelesDict = dict(zip(popNames,[0]*len(popNames)))
+    
 nProcs = args.threads
 verbose = args.verbose
 
@@ -290,8 +313,6 @@ for popName in popNames:
     for sample in popDict[popName]:
         assert sample in allSamples, "Sample name not in header: " + sample
 
-Out.write("\t".join(headers[0:2] + samples) + "\n")
-
 if args.ploidy is not None:
     ploidy = args.ploidy if len(args.ploidy) != 1 else args.ploidy*len(samples)
     assert len(ploidy) == len(samples), "Incorrect number of ploidy values supplied."
@@ -299,6 +320,13 @@ if args.ploidy is not None:
 elif args.ploidyFile is not None:
     with open(args.ploidyFile, "r") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
 else: ploidyDict = dict(zip(samples,[None]*len(samples)))
+
+if args.outputGenoFormat != "bases":
+    Out.write("\t".join(headers[0:2] + samples) + "\n")
+else:
+    assert args.ploidy != None, "Ploidy must be specified."
+    outSamples = [sample + "_" + letter for sample in samples for letter in string.ascii_uppercase[:ploidyDict[sample]]]
+    Out.write("\t".join(headers[0:2] + outSamples) + "\n")
 
 
 
@@ -326,10 +354,11 @@ of course these will only start doing anything after we put data into the line q
 the function we call is actually a wrapper for another function.(s)
 This one reads from the pod queue, passes each line some analysis function(s), gets the results and sends to the result queue'''
 for x in range(nProcs):
-    worker = Process(target=analysisWrapper,args=(inQueue,doneQueue,args.inputGenoFormat,args.outputGenoFormat,headers,
-                                                  include,exclude,samples,minCalls,minPopCallsDict,minAlleles,maxAlleles,
-                                                  minVarCount,maxHet,minFreq,maxFreq,HWE_P,HWE_side,popDict,ploidyDict,
-                                                  fixed,args.nearlyFixedDiff,args.forcePloidy,args.thinDist,args.noTest,))
+    worker = Process(target=analysisWrapper,args=(inQueue,doneQueue,args.inputGenoFormat,args.outputGenoFormat,args.alleleOrder,
+                                                  headers,include,exclude,samples,minCalls,minPopCallsDict,minAlleles,maxAlleles,
+                                                  minPopAllelesDict,maxPopAllelesDict,minVarCount,maxHet,minFreq,maxFreq,
+                                                  HWE_P,HWE_side,popDict,ploidyDict,fixed,args.nearlyFixedDiff,args.forcePloidy,
+                                                  args.thinDist,args.noTest,))
     worker.daemon = True
     worker.start()
 
