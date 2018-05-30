@@ -9,6 +9,14 @@
 * [Distance matrix](#Distance-matrix)
 * [ABBA-BABA statistics in sliding windows](#ABBA-BABA-statistics-in-sliding-windows)
 * [Trees for sliding windows](#Trees-for-sliding-windows)
+
+* [Common usage](#common-usage)
+
+## Common usage
+
+Let's think we have two arrays:  **photos** and **ads**.
+
+
 ___
 
 ## Parsing VCF files
