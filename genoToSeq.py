@@ -2,6 +2,7 @@
 import gzip, argparse, sys
 import genomics
 
+
 #############################
 
 parser = argparse.ArgumentParser()
@@ -12,6 +13,7 @@ parser.add_argument("-f", "--format", help="Sequence file format", action = "sto
 parser.add_argument("-M", "--mode", help="Output mode for different contigs", action = "store",
                     choices = ("cat", "windows","contigs"), default = "cat")
 parser.add_argument("-S", "--samples", help="Name of sample(s)", action = "store", required = False)
+parser.add_argument("--NtoGap", help="Convert 'N' or 'n' to '-'", action = "store_true")
 parser.add_argument("--seqNameFormat", help="Format for sequence names", action = "store", required = False,
                     choices = ("sample", "contig", "sample_contig", "contig_position", "sample_contig_position"),  default = "sample")
 parser.add_argument("--splitPhased", help="Split phased genotypes into two sequences per sample", action = "store_true")
@@ -55,7 +57,7 @@ if args.mode == "cat":
     window = genomics.parseGenoFile(genoFile, names=samples, splitPhased=args.splitPhased)
     #write
     seqDict = window.seqDict()
-    seqFile.write(genomics.makeAlnString(window.names,[seqDict[name] for name in window.names],outFormat = args.format))
+    seqFile.write(genomics.makeAlnString(window.names,[seqDict[name] for name in window.names],outFormat = args.format, NtoGap=args.NtoGap))
     genoFile.close()
     seqFile.close()
     exit()
@@ -108,7 +110,7 @@ if args.mode == "windows" or args.mode == "contigs":
         
         #write
         seqDict = window.seqDict()
-        seqFile.write(genomics.makeAlnString(seqNames,[seqDict[name] for name in seqNames],outFormat = args.format))
+        seqFile.write(genomics.makeAlnString(seqNames,[seqDict[name] for name in seqNames],outFormat = args.format,NtoGap=args.NtoGap))
         
         if args.separateFiles: seqFile.close()
 
