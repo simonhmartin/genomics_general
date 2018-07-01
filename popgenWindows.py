@@ -8,11 +8,16 @@ import itertools
 
 import genomics
 
-from multiprocessing import Process, Queue
-from multiprocessing.queues import SimpleQueue
-from threading import Thread
 from time import sleep
 
+from threading import Thread
+
+from multiprocessing import Process
+
+if sys.version_info>=(3,0):
+    from multiprocessing import SimpleQueue
+else:
+    from multiprocessing.queues import SimpleQueue
 
 
 ####################################################################################################################################
@@ -20,29 +25,42 @@ from time import sleep
 
 '''A function that reads from the window queue, calls some other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using. This is the function that will run on each of the N cores.'''
-def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, minSites, stats, doPops, skipPairs, indPairDist, indHet, addWindowID=False):
+def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, minSites,
+                  analysis, stats, addWindowID=False, roundTo=4):
     while True:
         windowNumber,window = windowQueue.get() # retrieve window
         if windType == "coordinate" or windType == "predefined":
             scaf,start,end,mid,sites = (window.scaffold, window.limits[0], window.limits[1], window.midPos(),window.seqLen())
         else: scaf,start,end,mid,sites = (window.scaffold, window.firstPos(), window.lastPos(),window.midPos(),window.seqLen())
+        
         if sites >= minSites:
             isGood = True
             #make alignment object
             Aln = genomics.genoToAlignment(window.seqDict(), sampleData, genoFormat = genoFormat)
+            
             statsDict = {}
-            if doPops: statsDict.update(genomics.popDiv(Aln, doPairs = not skipPairs))
-            if indPairDist:
+            
+            if "popFreq" in analysis:
+                statsDict.update(Aln.groupFreqStats())
+            
+            if "popDist" in analysis:
+                statsDict.update(Aln.groupDistStats(doPairs = "popPairDist" in analysis))
+            
+            if "indPairDist" in analysis:
                 pairDistDict = Aln.indPairDists()
                 for i,j in itertools.combinations_with_replacement(sorted(pairDistDict.keys()),2):
                     statsDict["_".join(["d",i,j])] = pairDistDict[i][j]
-            if indHet:
+            
+            if "indHet" in analysis:
                 hetDict = Aln.sampleHet()
                 for key in hetDict.keys(): statsDict["het_" + key] = hetDict[key]
-            values = [round(statsDict[stat], 4) for stat in stats]
+            
+            values = [round(statsDict[stat], roundTo) for stat in stats]
+        
         else:
             isGood = False
             values = [np.NaN]*len(stats)
+        
         results = [] if not addWindowID else [window.ID]
         results += [scaf,start,end,mid,sites] + values
         resultString = ",".join([str(x) for x in results])
@@ -58,11 +76,11 @@ def sorter(resultQueue, writeQueue, verbose):
     resNumber,result,isGood = resultQueue.get()
     resultsReceived += 1
     if verbose:
-      print >> sys.stderr, "Sorter received result", resNumber
+      sys.stderr.write("Sorter received result " + str(resNumber))
     if resNumber == expect:
       writeQueue.put((resNumber,result,isGood))
       if verbose:
-        print >> sys.stderr, "Result", resNumber, "sent to writer"
+        sys.stderr.write("Result {} sent to writer".format(resNumber))
       expect +=1
       #now check buffer for further results
       while True:
@@ -70,7 +88,7 @@ def sorter(resultQueue, writeQueue, verbose):
           result,isGood = sortBuffer.pop(str(expect))
           writeQueue.put((expect,result,isGood))
           if verbose:
-            print >> sys.stderr, "Result", expect, "sent to writer"
+            sys.stderr.write("Result {} sent to writer".format(expect))
           expect +=1
         except:
           break
@@ -96,8 +114,7 @@ def writer(writeQueue, out, writeFailedWindows=False):
 def checkStats():
   while True:
     sleep(10)
-    print >> sys.stderr, windowsQueued, "windows queued", resultsReceived, "results received", resultsWritten, "results written."
-
+    sys.stderr.write("\n{} windows queued, {} results received, {} results written.\n".format(windowsQueued, resultsReceived, resultsWritten))
 
 ####################################################################################################################
 
@@ -117,9 +134,12 @@ parser.add_argument("--popsFile", help="Optional file of sample names and popula
 parser.add_argument("--samples", help="Samples to include for individual analysis", action = "store", metavar = "sample names")
 parser.add_argument("--haploid", help="Samples that are haploid (comma separated)", action = "store", metavar = "sample names")
 parser.add_argument("--inferPloidy", help="Ploidy will be inferred in each window (NOT RECOMMENED)", action = "store_true")
-parser.add_argument("--skipPairs", help="Do not do pairwise statistics", action = "store_true")
-parser.add_argument("--indPairDist", help="Calculate distance between pairs of individuals", action = "store_true")
-parser.add_argument("--indHet", help="Calculate individual heterozygosity", action = "store_true")
+
+parser.add_argument("--analysis", help="Type of statistics to get", action = "store", nargs = "+",
+                    choices = ("popFreq","popDist", "popPairDist", "indPairDist","indHet"),
+                    default = ("popDist", "popPairDist",))
+
+parser.add_argument("--roundTo", help="Round stats to X decimal places", type=int, default=4)
 
 parser.add_argument("-g", "--genoFile", help="Input genotypes file", required = False)
 parser.add_argument("-o", "--outFile", help="Results file", required = False)
@@ -183,8 +203,9 @@ verbose = args.verbose
 popNames = []
 popInds = []
 allInds = []
-if args.population is not None:
-    doPops = True
+
+if "popFreq" in args.analysis or "popDist" in args.analysis or "popPairDist" in args.analysis:
+    assert args.population is not None, "\nPopulation(s) not specified."
     for p in args.population:
         popNames.append(p[0])
         if len(p) > 1: popInds.append(p[1].split(","))
@@ -199,13 +220,10 @@ if args.population is not None:
     for p in popInds: assert len(p) >= 1, "All populations must be represented by at least one sample."
 
     allInds += list(set([i for p in popInds for i in p]))
-else: doPops = False
 
 if args.samples is not None:
     allInds = list(set(allInds + args.samples.split(",")))
-    args.indHet = True
 
-assert doPops or args.indHet or args.indPairDist, "Populations not specified, and individual het or dists not requested. Nothing to do."
 
 #if populations and samples not specified, just get all sample names from file
 if len(allInds) == 0:
@@ -241,16 +259,27 @@ else: outFile.write("windowID,scaffold,start,end,mid,sites,")
 
 stats = []
 
-if args.indHet: stats += ["het_" + n for n in allInds]
+if "popFreq" in args.analysis:
+    stats += ["l_" + n for n in popNames]
+    stats += ["S_" + n for n in popNames]
+    stats += ["thetaPi_" + n for n in popNames]
+    stats += ["thetaW_" + n for n in popNames]
+    stats += ["TajD_" + n for n in popNames]
 
-if args.indPairDist: stats += ["_".join(["d",i,j]) for i,j in itertools.combinations_with_replacement(sorted(allInds),2)]
 
-if doPops:
+if "popDist" in args.analysis:
     stats += ["pi_" + n for n in popNames]
 
-    if not args.skipPairs:
-        stats += ["dxy_" + x + "_" + y for x,y in itertools.combinations(popNames, 2)]
-        stats += ["Fst_" + x + "_" + y for x,y in itertools.combinations(popNames, 2)]
+if "popPairDist" in args.analysis:
+    stats += ["dxy_" + x + "_" + y for x,y in itertools.combinations(popNames, 2)]
+    stats += ["Fst_" + x + "_" + y for x,y in itertools.combinations(popNames, 2)]
+
+if "indPairDist" in args.analysis:
+    stats += ["_".join(["d",i,j]) for i,j in itertools.combinations_with_replacement(sorted(allInds),2)]
+
+if "indHet" in args.analysis:
+    stats += ["het_" + n for n in allInds]
+
 
 outFile.write(",".join(stats) + "\n")
 
@@ -261,7 +290,7 @@ outFile.write(",".join(stats) + "\n")
 if exclude:
     scafsFile = open(exclude, "rU")
     scafsToExclude = [line.rstrip() for line in scafsFile.readlines()]
-    print >> sys.stderr, len(scafsToExclude), "scaffolds will be excluded."
+    sys.stderr.write("{} scaffolds will be excluded.".format(len(scafsToExclude)))
     scafsFile.close()
 else:
     scafsToExclude = None
@@ -269,7 +298,7 @@ else:
 if include:
     scafsFile = open(include, "rU")
     scafsToInclude = [line.rstrip() for line in scafsFile.readlines()]
-    print >> sys.stderr, len(scafsToInclude), "scaffolds will be analysed."
+    sys.stderr.write("{} scaffolds will be analysed.".format(len(scafsToInclude)))
     scafsFile.close()
 else:
     scafsToInclude = None
@@ -295,11 +324,11 @@ writeQueue = SimpleQueue()
 of course these will only start doing anything after we put data into the line queue
 the function we call is actually a wrapper for another function.(s) This one reads from the line queue, passes to some analysis function(s), gets the results and sends to the result queue'''
 for x in range(threads):
-  worker = Process(target=stats_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, sampleData, minSites,
-                                                 stats, doPops, args.skipPairs, args.indPairDist,args.indHet,args.addWindowID))
-  worker.daemon = True
-  worker.start()
-  print >> sys.stderr, "started worker", x
+    worker = Process(target=stats_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, sampleData, minSites,
+                                                    args.analysis, stats, args.addWindowID,args.roundTo))
+    worker.daemon = True
+    worker.start()
+    sys.stderr.write("started worker {}".format(x))
 
 
 '''thread for sorting results'''
@@ -342,7 +371,7 @@ for window in windowGenerator:
 
 ############################################################################################################################################
 
-print >> sys.stderr, "\nWriting final results...\n"
+sys.stderr.write("\nWriting final results...\n")
 while resultsHandled < windowsQueued:
   sleep(1)
 
@@ -351,10 +380,10 @@ sleep(5)
 genoFile.close()
 outFile.close()
 
-print >> sys.stderr, str(windowsQueued), "windows were tested.\n"
-print >> sys.stderr, str(resultsWritten), "results were written.\n"
+sys.stderr.write(str(windowsQueued) + " windows were tested.\n")
+sys.stderr.write(str(resultsWritten) + " results were written.\n")
 
-print "\nDone."
+sys.stderr.write("\nDone.\n")
 
 sys.exit()
 

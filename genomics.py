@@ -4,8 +4,10 @@ import numpy as np
 from copy import deepcopy
 import sys, string, time, re, math, itertools
 
+np.seterr(divide='ignore')
 
 ##################################################################################################################
+
 #Bits for intyerpreting and manipulating sequence data
 
 DIPLOTYPES = ('A',  'C',  'G',  'K',  'M',  'N',  'S',  'R',  'T',  'W',  'Y')
@@ -31,11 +33,20 @@ seqNumDict = {"A":0,"C":1,"G":2,"T":3,"N":-999}
 
 numSeqDict = {0:"A",1:"C",2:"G",3:"T",-999:"N"}
 
-#translation for conversion of missing bases to gaps
-missingtrans = string.maketrans("Nn", "--")
 
-#translation table for bases
-seqtrans = string.maketrans("ACGTKMRYVHBDN", "TGCAMKYRBDVHN")
+#translation tables - method epends on version
+
+if sys.version_info>=(3,0):
+    #translation for conversion of missing bases to gaps
+    missingtrans = str.maketrans("Nn", "--")
+    #translation table for bases
+    seqtrans = str.maketrans("ACGTKMRYVHBDN", "TGCAMKYRBDVHN")
+else:
+    #translation for conversion of missing bases to gaps
+    missingtrans = string.maketrans("Nn", "--")
+    #translation table for bases
+    seqtrans = string.maketrans("ACGTKMRYVHBDN", "TGCAMKYRBDVHN")
+
 
 def revTrans(seq):
     return seq.translate(seqtrans)[::-1]
@@ -112,6 +123,9 @@ class Genotype:
         try: return np.bincount(self.numAlleles, minlength = 4)[seqNumDict[countAllele]]
         except: return missing
     
+    def asBaseCounts(self):
+        return np.bincount(self.numAlleles[self.numAlleles >= 0], minlength = 4)
+    
     def isMissing(self): return np.any(self.numAlleles==-999)
 
 
@@ -131,8 +145,7 @@ def parseGenes(gff):
                 #we've found a new mRNA
                 try: mRNA = makeInfoDict(gffObjects[-1])["ID"]
                 except:
-                    print gffObjects[-1]
-                    raise ValueError("Problem parsing mRNA information.") 
+                    raise ValueError("Problem parsing mRNA information: " + gffObjects[-1]) 
                 if mRNA not in output[scaffold].keys():
                     output[scaffold][mRNA] = {'start':int(gffObjects[3]), 'end':int(gffObjects[4]), 'strand':gffObjects[6], 'exons':0, 'cdsStarts':[], 'cdsEnds':[]}
             elif gffObjects[2] == "CDS" or gffObjects[2] == "cds":
@@ -197,7 +210,7 @@ def pseudoPhase(sequence, genoFormat = "diplo"):
 def splitSeq(sequence, genoFormat = "phased"):
     assert genoFormat in ("haplo", "diplo", "pairs", "alleles", "phased",)
     if genoFormat == "diplo": sequence = [haplo(d) for d in sequence]
-    split = zip(*sequence) 
+    split = list(zip(*sequence)) 
     #remove phase splitters
     if genoFormat == "phased": split = split[::2]
     return split
@@ -279,7 +292,7 @@ class GenomeSite:
             if alleles is None: alleles = self.alleles(byFreq = True)
             if codeDict is None: codeDict = dict(zip(alleles, [str(x) for x in range(len(alleles))]))
             return [self.genotypes[sample].asCoded(codeDict, missing) for sample in samples]
-        elif mode == "count": # vcf format '0/1' - optionally alleles can be provided (REF first)
+        elif mode == "count":
             if alleles is None: alleles = self.alleles(byFreq = True)
             countAllele = alleles[-1]
             return [self.genotypes[sample].asCount(countAllele,missing) for sample in samples]
@@ -292,12 +305,12 @@ class GenomeSite:
         numBases = np.concatenate([self.genotypes[sample].numAlleles for sample in samples])
         return binBaseFreqs(numBases[numBases >= 0], asCounts = asCounts)
     
-    def alleles(self, samples = None, pop=None, byFreq = False):
+    def alleles(self, samples = None, pop=None, byFreq = False, numeric=False):
         if pop: samples = self.pops[pop]
         if not samples: samples = self.sampleNames
         counts = self.baseFreqs(samples=samples,asCounts = True)
         idx = counts>0
-        alleles = np.array(["A","C","G","T"])[idx]
+        alleles = np.array(["A","C","G","T"])[idx] if not numeric else idx
         counts = counts[idx]
         if byFreq: return list(alleles[np.argsort(counts)[::-1]])
         else: return sorted(list(alleles))
@@ -355,16 +368,66 @@ def binBaseFreqs(numArr, asCounts = False):
         else: return 1.* np.bincount(numArr, minlength=4) / n
 
 
-def derivedAllele(inBases, outBases, maxOneDerivedAllele=True, numeric=False):
-    outAlleles = np.unique(outBases)
-    inAlleles = np.unique(inBases)
+#quickest method I could find to determine if a numeric array is variable or not
+def numVar(numArray):
+    return max(np.bincount(numArray)) != len(numArray)
+
+#timeit.timeit("numVar(numArray)", setup="from __main__ import numVar, numArray", number = 1000000)
+
+#site-wise pi for multi-allelic sites (input is counts of four bases)
+def baseCountPi(baseCounts):
+    N = sum(baseCounts)
+    return (baseCounts[0]*baseCounts[1] +
+            baseCounts[0]*baseCounts[2] + 
+            baseCounts[0]*baseCounts[3] + 
+            baseCounts[1]*baseCounts[2] +
+            baseCounts[1]*baseCounts[3] + 
+            baseCounts[2]*baseCounts[3]) / (.5*N*(N-1))
+
+
+def TajimaD(n,S,theta_pi):
+    # https://ocw.mit.edu/courses/health-sciences-and-technology/hst-508-quantitative-genomics-fall-2005/study-materials/tajimad1.pdf
+    a= sum( 1./i for i in range(1, n))
+    theta_w = 1.*S/a # M 
+    a2 = sum( 1./(i**2) for i in range(1, n))
+    b1 = (n + 1.) / (3*(n-1))
+    b2 = (2. * (n**2 + n + 3)) / (9*n*(n-1))
+    c1 = b1 - (1./a)
+    c2 = b2 - ((n+2)/(a*n)) + a2/(a**2)
+    e1 = c1/a
+    e2 = c2/(a**2 + a2)        
+    d = theta_pi - theta_w
+    D = d / np.sqrt(e1*S + e2*S*(S-1))
+    return D
+
+
+
+def derivedAllele(inBases=None, outBases=None,
+                  inBaseCounts=None, outBaseCounts=None,
+                  inAlleles=[], outAlleles=[],
+                  maxOneDerivedAllele=True, numeric=False):
+    
+    if inBases is not None: inAlleles = np.unique(inBases)
+    elif inBaseCounts is not None:
+        if not numeric: inAlleles=["ACGT"[i] for i in range(4) if inBaseCounts[i] > 0]
+        else: inAlleles= np.where(np.array(inBaseCounts) > 0)[0]
+    
+    if outBases is not None: outAlleles = np.unique(outBases)
+    elif outBaseCounts is not None:
+        if not numeric: outAlleles=["ACGT"[i] for i in range(4) if outBaseCounts[i] > 0]
+        outAlleles= np.where(np.array(outBaseCounts) > 0)[0]
+    
+    if not isinstance(inAlleles, np.ndarray): inAlleles = np.array(inAlleles)
+    if not isinstance(outAlleles, np.ndarray): outAlleles = np.array(outAlleles)
+    
     if maxOneDerivedAllele and len(outAlleles) == 1 and len(inAlleles) == 2 and np.any(outAlleles[0] == inAlleles):
         return inAlleles[inAlleles != outAlleles[0]][0]
-    elif len(outAlleles) == 1 and len(inAlleles) >= 2 and np.any(outAlleles[0] == inAlleles):
+    
+    elif not maxOneDerivedAllele and len(outAlleles) == 1 and len(inAlleles) >= 2 and np.any(outAlleles[0] == inAlleles):
         return inAlleles[inAlleles != outAlleles[0]]
-    elif numeric: return np.nan
-    else: "N"
-
+    
+    elif numeric or isinstance(inAlleles[0], np.int) or isinstance(inAlleles[0], np.float): return np.nan
+    else: return "N"
 
 def minorAllele(bases):
     alleles = np.unique(bases)
@@ -434,7 +497,7 @@ def inHWE(genotypes, P_value, side = "both", verbose = False):
     site = Site(genotypes = genotypes)
     diplos = site.asList(mode = "diplo")
     diplos = [d for d in diplos if d != "N"]
-    if verbose: print diplos
+    if verbose: sys.stderr.write(diplos)
     if len(diplos) == 0: return True
     alleles = site.alleles()
     if len(alleles) == 1: return True
@@ -442,9 +505,9 @@ def inHWE(genotypes, P_value, side = "both", verbose = False):
     Hom1Count = int(diplos.count(alleles[0]))
     Hom2Count = int(diplos.count(alleles[1]))
     HetCount = len(diplos) - (Hom1Count + Hom2Count)
-    if verbose: print Hom1Count, Hom2Count, HetCount
+    if verbose: sys.stderr.write(str(Hom1Count) + " " + str(Hom2Count) + " " + str(HetCount))
     p = HWEtest(HetCount,Hom1Count,Hom2Count)
-    if verbose: print "P:", p
+    if verbose: sys.stderr.write("P: " + str(p))
     if p <= P_value: return False
     else: return True
 
@@ -516,7 +579,7 @@ def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAllel
 
 def invertDictOfLists(d):
     new = {}
-    for key, lst in d.iteritems():
+    for key, lst in d.items():
         for i in lst:
             try: new[i].append(key)
             except: new[i] = [key]
@@ -525,7 +588,7 @@ def invertDictOfLists(d):
 
 
 def makeList(thing):
-    if isinstance(thing, basestring): return [thing]
+    if isinstance(thing, str): return [thing]
     else:
         try: iter(thing)
         except TypeError: return [thing]
@@ -608,7 +671,7 @@ class Alignment:
         
         return Alignment(sequences = self.array[:,indices], names = self.names, groups=self.groups,
                          numArray=self.numArray[:,indices], positions=[self.positions[i] for i in indices])
-            
+    
     def column(self,x): return self.array[:,x]
     
     def numColumn(self,x): return self.numArray[:,x]
@@ -629,7 +692,7 @@ class Alignment:
         if sampleNames is None: sampleNames,sampleIndices = uniqueIndices(self.sampleNames, preserveOrder=True)
         else: sampleIndices = [np.where(self.sampleNames == sampleName)[0] for sampleName in sampleNames]
         #if a pre-computed distance matrix is available, use that
-        if self._distMat_ != None:
+        if self._distMat_ is not None:
             hets = [self._distMat_[x[0],x[1]] if len(x)==2 else np.NaN for x in sampleIndices]
         #otherwise compute pairwise distances (i.e. entire matrix not needed)
         else:
@@ -640,7 +703,7 @@ class Alignment:
     #if all are haploid, this is just a dictionary of the output of distMatrix()
     #if some have ploidy > 1, this will average distance among sample haplotypes
     def indPairDists(self, asDict=True):
-        distMat = self.distMatrix() if self._distMat_ == None else self._distMat_ 
+        distMat = self.distMatrix() if self._distMat_ is None else self._distMat_ 
         sampleNames,sampleIndices = uniqueIndices(self.sampleNames, preserveOrder=True)
         n = len(sampleNames)
         if asDict:
@@ -656,14 +719,78 @@ class Alignment:
                     indDistMat[i,j] = indDistMat[j,i] = np.mean(distMat[sampleIndices[i],sampleIndices[j]])
             return indDistMat
     
+    def groupDistStats(self, doPairs = True):
+        #get distance matrix unless a precomputed one is available
+        distMat = self._distMat_ if self._distMat_ is not None else self.distMatrix()
+        np.fill_diagonal(distMat, np.NaN) # set all same-with-same to Na
+        
+        pops,indices = np.unique(self.groups, return_inverse = True)
+        nPops = len(pops)
+        
+        #get population indices - which positions in the alignment correspond to each population
+        # this will allow indexing specific pops from the matrix.
+        popIndices = [list(np.where(indices==x)[0]) for x in range(nPops)]
+        
+        output = {}
+        
+        #pi for each pop
+        for x in range(nPops):
+            output["pi_" + pops[x]] = np.nanmean(distMat[np.ix_(popIndices[x],popIndices[x])])
+        
+        if nPops == 1 or not doPairs: return output
+
+        #pairs
+        for x in range(nPops-1):
+            for y in range(x+1, nPops):
+                #dxy
+                output["dxy_" + pops[x] + "_" + pops[y]] = output["dxy_" + pops[y] + "_" + pops[x]] = np.nanmean(distMat[np.ix_(popIndices[x],popIndices[y])])
+                
+                #fst
+                #first get the weightings for each pop
+                n_x = len(popIndices[x])
+                n_y = len(popIndices[y])
+                w = 1.* n_x/(n_x + n_y)
+                pi_s = w*(output["pi_" + pops[x]]) + (1-w)*(output["pi_" + pops[y]])
+                pi_t = np.nanmean(distMat[np.ix_(popIndices[x]+popIndices[y],popIndices[x]+popIndices[y])])
+                output["Fst_" + pops[x] + "_" + pops[y]] = output["Fst_" + pops[y] + "_" + pops[x]] = 1 - pi_s/pi_t
+        
+        return output
     
     def varSites(self, indices=None, names=None):
         if names is not None: indices = np.where(np.in1d(aln.names,names))[0]
         if indices is None: indices = np.arange(self.N)
-        return np.where([len(np.unique(self.numArray[indices,x][self.nanMask[indices,x]])) > 1 for x in xrange(self.l)])[0]
+        return np.where([numVar(self.numArray[indices,x][self.nanMask[indices,x]]) for x in range(self.l)])[0]
     
-    def biSites(self): return np.where([len(np.unique(self.numArray[:,x][self.nanMask[:,x]])) == 2 for x in xrange(self.l)])[0]
+    def groupFreqStats(self):
+        #dictionary of popgen statistics based on sites (as opposed to pairwise sequence comparisons)
+        # THIES ONLY USES SITES WITHOUT ANY MISSING DATA IN A GIVEN GROUP
+        output = {}
+        
+        for groupName in np.unique(self.groups):
+            seqIdx = np.where(self.groups==groupName)[0]
+            N = len(seqIdx)
+            siteIdx = np.where(np.all(self.nanMask, axis=0))[0]
+            l = len(siteIdx)
+            if l >= 1:
+                siteBaseCounts = np.apply_along_axis(binBaseFreqs,0,self.numArray[np.ix_(seqIdx,siteIdx)],asCounts=True)
+                #Here I caculate a site-wise pi by summing multplied pairs of base frequencies and dividing by total possible pairs
+                #this is slower than computing from the SFS, but it allows for more than 2 alleles per site
+                sitePi = np.apply_along_axis(baseCountPi, 0, siteBaseCounts)
+                S = sum(sitePi != 0.)
+                thetaPi = sum(sitePi)
+                thetaW = S / sum(1./np.arange(1,N))
+                TajD = TajimaD(N, S, thetaPi)
+            else: S=thetaPi=thetaW=TajD=np.NaN
+            output["l_"+groupName] = l
+            output["S_"+groupName] = S
+            output["thetaPi_"+groupName] = thetaPi
+            output["thetaW_"+groupName] = thetaW
+            output["TajD_"+groupName] = TajD
+        
+        return output
     
+    def biSites(self): return np.where([len(np.unique(self.numArray[:,x][self.nanMask[:,x]])) == 2 for x in range(self.l)])[0]
+        
     def siteNonNan(self, sites=None, prop = False):
         if sites is None: sites = range(self.l)
         else: sites = makeList(sites)
@@ -681,7 +808,7 @@ class Alignment:
     
     def consensus(self, minData = 0.001):
         propData = self.siteNonNan(prop=True)
-        return [consensus(self.array[:,i][self.nanMask[:,i]]) if propData[i] >= minData else "N" for i in xrange(self.l)]
+        return [consensus(self.array[:,i][self.nanMask[:,i]]) if propData[i] >= minData else "N" for i in range(self.l)]
 
 
 def genoToAlignment(seqDict, sampleData=None, genoFormat = "diplo", positions = None):
@@ -694,7 +821,6 @@ def genoToAlignment(seqDict, sampleData=None, genoFormat = "diplo", positions = 
     for indName in seqDict.keys():
         seqList = splitSeq(seqDict[indName], genoFormat)
         ploidy = sampleData.ploidy[indName] if indName in sampleData.ploidy and sampleData.ploidy[indName] != None else len(seqList)
-        #print seqList
         if ploidy is not None: assert len(seqList) == ploidy, "Sample ploidy (" + str(ploidy) + ") doesn't match number of sequences (" + str(len(seqList)) + ")"
         if ploidy != 1:
             haploidSeqs += seqList
@@ -786,7 +912,7 @@ def maxLDphase(aln, sampleIndices=None, stat = "r2"):
 #def seqDistance(seqA, seqB, proportion = True):
     #dist = 0
     #sites = 0
-    #for x in xrange(len(seqA)):
+    #for x in range(len(seqA)):
         #a,b = seqA[x],seqB[x]
         #if a != "N" and b != "N":
             #sites+=1
@@ -821,6 +947,7 @@ def distMatrix(sequences):
     return distMat
 
 
+
 class SampleData:
     def __init__(self, indNames = [], popNames = None, popInds = [], popNumbers = None, ploidyDict = None):
         if popNumbers is None: popNumbers = range(len(popInds))
@@ -850,14 +977,14 @@ class SampleData:
             return self.popNumbers[self.popNames.index(popName)]
 
 
+
 def popDiv(Aln, doPairs = True):
     #get distance matrix unless a precomputed one is available
-    distMat = Aln._distMat_ if Aln._distMat_ != None else Aln.distMatrix()
+    distMat = Aln._distMat_ if Aln._distMat_ is not None else Aln.distMatrix()
     np.fill_diagonal(distMat, np.NaN) # set all same-with-same to Na
     
     pops,indices = np.unique(Aln.groups, return_inverse = True)
     nPops = len(pops)
-    assert nPops > 1, "At least two populations required."
     
     #get population indices - which positions in the alignment correspond to each population
     # this will allow indexing specific pops from the matrix.
@@ -869,7 +996,7 @@ def popDiv(Aln, doPairs = True):
     for x in range(nPops):
         output["pi_" + pops[x]] = np.nanmean(distMat[np.ix_(popIndices[x],popIndices[x])])
     
-    if not doPairs: return output
+    if nPops == 1 or not doPairs: return output
 
     #pairs
     for x in range(nPops-1):
@@ -1138,7 +1265,7 @@ def fourPop(aln, P1, P2, P3, P4, minData, polarize=False, fixed=False):
     P3Aln = all4Aln.subset(groups=[P3])
     P4Aln = all4Aln.subset(groups=[P4])
 
-    biallelic = [len(np.unique(all4Aln.numArray[:,x][all4Aln.nanMask[:,x]])) == 2 for x in xrange(all4Aln.l)]
+    biallelic = [len(np.unique(all4Aln.numArray[:,x][all4Aln.nanMask[:,x]])) == 2 for x in range(all4Aln.l)]
     
     enoughData =((P1Aln.siteNonNan()*1./P1Aln.N >= minData) &
                     (P2Aln.siteNonNan()*1./P2Aln.N >= minData) &
@@ -1200,7 +1327,7 @@ def ABBABABA(aln, P1, P2, P3, P4, minData, polarize=True, fixed=False):
     P3Aln = all4Aln.subset(groups=[P3])
     P4Aln = all4Aln.subset(groups=[P4])
 
-    biallelic = [len(np.unique(all4Aln.numArray[:,x][all4Aln.nanMask[:,x]])) == 2 for x in xrange(all4Aln.l)]
+    biallelic = [len(np.unique(all4Aln.numArray[:,x][all4Aln.nanMask[:,x]])) == 2 for x in range(all4Aln.l)]
     
     enoughData =((P1Aln.siteNonNan()*1./P1Aln.N >= minData) &
                     (P2Aln.siteNonNan()*1./P2Aln.N >= minData) &
@@ -1671,7 +1798,7 @@ def subset(things,subLen):
 
 def makeAlnString(names=None, seqs=None, seqDict=None, outFormat="phylip", lineLen=None, NtoGap=False):
     assert outFormat=="phylip" or outFormat=="fasta"
-    if seqDict: names, seqs = zip(*seqDict.items())
+    if seqDict: names, seqs = list(zip(*seqDict.items()))
     else: assert len(names) == len(seqs)
     seqs = ["".join(s) for s in seqs]
     if NtoGap: seqs = [seq.translate(missingtrans) for seq in seqs]
@@ -1719,7 +1846,7 @@ def parsePhylip(string, asList=False):
     seqIdx = [[range(headIdx[i]+1+j,headIdx[i+1],Ns[i]) for j in range(Ns[i])] for i in range(len(headIdx)-1)]
     seqs = [["".join([lineParts[y][1] for y in x]) for x in w] for w in seqIdx] 
     if not asList and len(names) == 1: return (names[0], seqs[0])
-    else: return zip(names,seqs)
+    else: return list(zip(names,seqs))
 
 
 ############### writing distance matrices
