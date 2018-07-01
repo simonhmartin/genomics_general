@@ -147,9 +147,9 @@ parser.add_argument("--ploidyFile", help="File with samples names and ploidy as 
 parser.add_argument("--forcePloidy", help="Force genotypes to specified ploidy", action = "store_true")
 
 #contigs
-parser.add_argument("--include", help="include contigs (separated by commas)", action='store')
+parser.add_argument("--include", help="include contigs", nargs = "+", action='store')
 parser.add_argument("--includeFile", help="File of contigs (one per line)", action='store')
-parser.add_argument("--exclude", help="exclude contigs (separated by commas)", action='store')
+parser.add_argument("--exclude", help="exclude contigs", nargs = "+", action='store')
 parser.add_argument("--excludeFile", help="File of contigs (one per line)", action='store')
 
 
@@ -183,10 +183,8 @@ args = parser.parse_args()
 infile = args.infile
 outfile = args.outfile
 
-include = []
-exclude = []
-if args.include: include += args.include.split(",")
-if args.exclude: exclude += args.exclude.split(",")
+include = args.include if args.include else []
+exclude = args.exclude if args.exclude else []
 
 if args.includeFile:
     with open(args.includeFile, 'r') as includeFile:
