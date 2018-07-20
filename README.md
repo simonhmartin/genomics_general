@@ -48,8 +48,9 @@ The script `popgenWindows.py` computes some standard population genomic statisti
 
 #### Example command
 ```bash
-python popgenWindows.py -w 50000 -m 5000 -g input.geno.gz -o output.csv.gz -f phased -T 5 -p popA A1,A2,A3,A4 -p popB B1,B2,B3,B4,B6,B6 -p popC C1,C2
+python popgenWindows.py -w 50000 -m 5000 -g input.geno.gz -o output.csv.gz -f phased -T 5 -p popA A1,A2,A3,A4 -p popB B1,B2,B3,B4,B6,B6 -p popC -p popD --popsFile pops.txt 
 ```
+
 `python popgenWindows.py -h` Will print a full list of command arguments.
 
 #### Notes
@@ -86,6 +87,20 @@ scaffold1  1        A       G       R
 | `coordinate`     | Windows will cover a fixed range in the genome, which is defined as the window size. If there is missing data, this can lead to variable numbers of sites used for each window. |
 | `sites`        | Each window will have the same number of sites. If there is missing data, this can lead to different absolute sizes for windows in terms of genome coordiantes. |
 | `predefined`          | This will analyse predefined windows provided using the `--windCoords` flag. |
+
+* You can either include sample names after the population name, separated by commas, or provide only the population name, along with a populations file, with the flag `--popsFile `, which has two columns: the first gives sample names and teh second gives population name:
+
+```
+C1  popC
+C2  popC
+C3  popC
+C4  popC
+D1  popD
+D2  popD
+D3  popD
+D4  popD
+```
+
 
 * The most common source of errors here involve the `-m` (`--minSites`) flag. If you are useing coordinate windows and have any sites with missing data, then `-m` must be set to a value smaller than the window size. If you have reduced representation data such as RADseq, you will need a much lower `-m` value (more like 1% of the window size or even less).
 
@@ -124,14 +139,14 @@ The script `ABBABABAwindows.py` performs analyses described in [Martin et al. 20
 #### Example command
 
 ```bash
-python ABBABABAwindows.py -g /zoo/disk1/shm45/vcf/set62/set62.chr21.DP5GQ30.AN100MAC1.diplo.gz -f phased -o output.csv -w 100000 -m 100 -s 100000 -p P1 A1,A2,A3,A4 -p P2 B1,B2,B3,B4 -p P3  C1,C2,C3,C4 -p O D1,D2,D3,D4 -T 10 --minData 0.5
+python ABBABABAwindows.py -g /zoo/disk1/shm45/vcf/set62/set62.chr21.DP5GQ30.AN100MAC1.diplo.gz -f phased -o output.csv -w 100000 -m 100 -s 100000 -P1 A -P2 B -P3 C -O D -T 10 --minData 0.5 --popsFile pops.txt --writeFailedWindows --polarize &
 ```
 `python ABBABABAwindows.py -h` Will print a full list of command arguments.
 
 #### Notes
 * This script shares several command arguments with `popgenWindows.py`. And input formats are the same. Please see the notes for that script above.
 
-* Four populations, with the names `P1`, `P2`, `P3` and `O` are requied.
+* As above, you can either include sample names after the population name, separated by commas, or provide a populations file, which has two columns: the first gives sample names and teh second gives population name.
 
 * *f<sub>d</sub>* gives meaningless values (<0 or >1) if *D* is negative. If there is no excess of shared derived alleles between P2 and P3 (indicated by a positive D), then the excess cannot be quantified. *f<sub>d</sub>* values for windows with negative *D* should therefore either be discarded or converted to zero, depending on your hypothesis. 
 
