@@ -29,8 +29,6 @@ geneData = genomics.parseGenes(gffLines)
 if not args.outFile: outFile = sys.stdout
 else: outFile = gzip.open(args.outFile,"w") if args.outFile.endswith(".gz") else open(args.outFile,"w")
 
-with gzip.open(args.genoFile,"r") if args.genoFile.endswith(".gz") else open(args.genoFile,"r") as genoFile: headerLine = genoFile.readline()
-
 ###################################################
 
 #extract each scaffold from the geno file, and the genes for each scaffold and write them out
@@ -42,8 +40,8 @@ for scaffold in geneData.keys():
         sys.stderr.write(mRNA + "\n")
         region = scaffold + ":" + str(geneData[scaffold][mRNA]["start"]) + "-" + str(geneData[scaffold][mRNA]["end"])
         sys.stderr.write("Getting region " + region + " from geno file...\n") 
-        genoStream = subprocess.Popen(['tabix',args.genoFile, region], stdout=subprocess.PIPE)
-        window = genomics.parseGenoFile(genoStream.stdout, names=args.samples, includePositions=True, splitPhased = args.split, headerLine=headerLine)
+        genoStream = subprocess.Popen(['tabix -h',args.genoFile, region], stdout=subprocess.PIPE)
+        window = genomics.parseGenoFile(genoStream.stdout, names=args.samples, includePositions=True, splitPhased = args.split)
         seqDict = window.seqDict()
         seqNames=seqDict.keys()
         sys.stderr.write("Extracting CDS...\n") 
