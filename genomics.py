@@ -136,7 +136,7 @@ def parseGenes(gff):
     output = {}
     for gffLine in gff:
         if len(gffLine) > 1 and gffLine[0] != "#":
-            gffObjects = gffLine.split("\t")
+            gffObjects = gffLine.strip().split("\t")
             #store all mRNA and CDS data for the particular scaffold
             scaffold = gffObjects[0]
             if scaffold not in output.keys():
@@ -157,7 +157,6 @@ def parseGenes(gff):
                 output[scaffold][mRNA]['cdsStarts'].append(start)
                 output[scaffold][mRNA]['cdsEnds'].append(end)
     return(output)
-
 
 
 
@@ -260,7 +259,7 @@ class GenomeSite:
                                               ploidy = self.ploidy[sample],forcePloidy=forcePloidy)
         
     def asList(self, samples = None, pop = None, mode = "phased", alleles = None,
-               codeDict=None, missing=None, alleleOrder=None):
+               codeDict=None, missing=None, alleleOrder=None, countAllele=None):
         if pop: samples = self.pops[pop]
         if not samples: samples = self.sampleNames
         if mode == "bases":
@@ -293,8 +292,9 @@ class GenomeSite:
             if codeDict is None: codeDict = dict(zip(alleles, [str(x) for x in range(len(alleles))]))
             return [self.genotypes[sample].asCoded(codeDict, missing) for sample in samples]
         elif mode == "count":
-            if alleles is None: alleles = self.alleles(byFreq = True)
-            countAllele = alleles[-1]
+            if countAllele is None:
+                if alleles is None: alleles = self.alleles(byFreq = True)
+                countAllele = alleles[-1]
             return [self.genotypes[sample].asCount(countAllele,missing) for sample in samples]
         else:
             raise ValueError("mode must be 'bases', 'alleles', 'numeric', 'numAlleles', 'phased', 'diplo', 'coded', or 'count'")
