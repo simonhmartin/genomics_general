@@ -30,7 +30,7 @@ else: samples = args.samples.split(",")
 
 if args.chromFile:
     chromsProvided = True
-    with open(args.chromFile, "r") as chromFile: chromDict = dict([line.split() for line in chromFile]
+    with open(args.chromFile, "r") as chromFile: chromDict = dict([line.split() for line in chromFile])
 else: chromDict = {}
 
 
