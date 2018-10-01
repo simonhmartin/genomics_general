@@ -49,7 +49,7 @@ for scaffold in geneData.keys():
         
         outputNames = [name + "_" + mRNA + " " + scaffold + " " +
                        str(geneData[scaffold][mRNA]['start']) + "-" + str(geneData[scaffold][mRNA]['end']) for name in seqNames]
-        fastaString = genomics.makeAlnString(outputNames,CDSseqs,format="fasta", lineLen=None)
+        fastaString = genomics.makeAlnString(outputNames,CDSseqs,outFormat="fasta", lineLen=None)
         outFile.write(fastaString + "\n")
 
 outFile.close()
