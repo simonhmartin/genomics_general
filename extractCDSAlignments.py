@@ -40,7 +40,7 @@ for scaffold in geneData.keys():
         sys.stderr.write(mRNA + "\n")
         region = scaffold + ":" + str(geneData[scaffold][mRNA]["start"]) + "-" + str(geneData[scaffold][mRNA]["end"])
         sys.stderr.write("Getting region " + region + " from geno file...\n") 
-        genoStream = subprocess.Popen(['tabix -h',args.genoFile, region], stdout=subprocess.PIPE)
+        genoStream = subprocess.Popen(['tabix', '-h', args.genoFile, region], stdout=subprocess.PIPE)
         window = genomics.parseGenoFile(genoStream.stdout, names=args.samples, includePositions=True, splitPhased = args.split)
         seqDict = window.seqDict()
         seqNames=seqDict.keys()
