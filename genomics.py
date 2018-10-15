@@ -1852,8 +1852,7 @@ def parsePhylip(string, asList=False):
 ############### writing distance matrices
 
 def makeDistMatString(distArray, roundTo=10):
-    output += "\n".join([" ".join(i) for i in distArray.round(roundTo).astype(str)])
-    return output
+    return "\n".join([" ".join(i) for i in distArray.round(roundTo).astype(str)])
 
 def makeDistMatPhylipString(distArray, names, roundTo=10):
     output = str(distArray.shape[0]) + "\n"
