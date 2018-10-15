@@ -20,7 +20,7 @@ from time import sleep
 
 '''A function that reads from the window queue, calls some other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using. This is the function that will run on each of the N cores.'''
-def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, minSites, outFormat, outputWindowData, addWindowID=False):
+def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, minSites, outFormat, roundTo, outputWindowData, addWindowID=False):
     while True:
         nInd = len(sampleData.indNames)
         windowNumber,window = windowQueue.get() # retrieve window
@@ -39,9 +39,9 @@ def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, mi
             isGood = False
             distMat = np.empty([nInd,nInd])
             distMat.fill(np.NaN)
-        if outFormat == "nexus": distMatString = genomics.makeDistMatNexusString(distMat, names=sampleData.indNames, roundTo=4)
-        elif outFormat == "phylip": distMatString = genomics.makeDistMatPhylipString(distMat, names=sampleData.indNames, roundTo=4)
-        elif outFormat == "raw": distMatString = genomics.makeDistMatString(distMat, roundTo=4) + "\n"
+        if outFormat == "nexus": distMatString = genomics.makeDistMatNexusString(distMat, names=sampleData.indNames, roundTo=roundTo)
+        elif outFormat == "phylip": distMatString = genomics.makeDistMatPhylipString(distMat, names=sampleData.indNames, roundTo=roundTo)
+        elif outFormat == "raw": distMatString = genomics.makeDistMatString(distMat, roundTo=roundTo) + "\n"
         result = {"main":distMatString}
         if outputWindowData:
             windowData = [] if not addWindowID else [window.ID]
@@ -128,6 +128,8 @@ parser.add_argument("-f", "--genoFormat", action='store', choices = ("phased","p
                     help="Format of genotypes in genotypes file")
 parser.add_argument("--outFormat", action = "store", choices = ("raw","phylip","nexus"), default = "phylip",
                     help="Format for distance matrix output")
+
+parser.add_argument("--roundTo", help="Round to N decomal places", type=int, action = "store", default=4)
 
 parser.add_argument("--exclude", help="File of scaffolds to exclude", required = False)
 parser.add_argument("--include", help="File of scaffolds to analyse", required = False)
@@ -258,7 +260,7 @@ of course these will only start doing anything after we put data into the line q
 the function we call is actually a wrapper for another function.(s) This one reads from the line queue, passes to some analysis function(s), gets the results and sends to the result queue'''
 for x in range(args.threads):
     worker = Process(target=stats_wrapper, args = (windowQueue, resultQueue, args.windType, args.genoFormat, sampleData, minSites,
-                                                    args.outFormat, outputWindowData,args.addWindowID))
+                                                    args.outFormat, args.roundTo, outputWindowData,args.addWindowID))
     worker.daemon = True
     worker.start()
     print >> sys.stderr, "started worker", x
