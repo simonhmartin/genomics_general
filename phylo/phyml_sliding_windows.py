@@ -1,13 +1,15 @@
 
 import argparse, sys, os, gzip, random, tempfile
 import numpy as np
-import genomics
 
 from multiprocessing import Process, Queue
 from multiprocessing.queues import SimpleQueue
 from threading import Thread
 from time import sleep
 
+#add parent directory to path in case genomics.py is there instead of on the path
+sys.path.insert(1, os.path.realpath(os.path.pardir))
+import genomics
 
 
 ####################################################################################################################################
