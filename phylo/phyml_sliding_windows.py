@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 
 import argparse, sys, os, gzip, random, tempfile
 import numpy as np
@@ -18,6 +19,7 @@ import genomics
 def phymlTree(seqArray, seqNames, model, opt, phyml, prefix = "", tmpDir = None, test = False, log="/dev/null"):
     #write file
     tempAln = tempfile.NamedTemporaryFile(mode="w",prefix=prefix,suffix=".phy",dir=tmpDir,delete=False)
+    localName = tempAln.name.rsplit("/",1)[1]
     with tempAln as tA: tA.write(genomics.makeAlnString(seqNames,seqArray))
     phymlCommand = " ".join([phyml,"--input", tempAln.name,"--model", model, "-o", opt, "-b 0", ">>", log])
     if test: print >> sys.stderr, "phyml command:\n", phymlCommand
@@ -44,7 +46,9 @@ def phymlTree(seqArray, seqNames, model, opt, phyml, prefix = "", tmpDir = None,
         except:
             lnL = "NA"
     #remove files
-    if not test: os.system("rm " + tempAln.name + "*")
+    if not test:
+        for f in [f for f in os.listdir(tmpDir) if localName in f]:
+            os.remove(tmpDir + "/" + f)
     return (tree,lnL,)
 
 
@@ -53,6 +57,8 @@ def phymlCrossVal(seqArray0, seqArray1, indNames, model, opt, phyml, prefix = ""
     #write file
     tempAln0 = tempfile.NamedTemporaryFile(mode="w",prefix=prefix,suffix=".0.phy",dir=tmpDir,delete=False)
     tempAln1 = tempfile.NamedTemporaryFile(mode="w",prefix=prefix,suffix=".1.phy",dir=tmpDir,delete=False)
+    localName0 = tempAln0.name.rsplit("/",1)[1]
+    localName1 = tempAln1.name.rsplit("/",1)[1]
     with tempAln0 as tempAln0: tempAln0.write(genomics.makeAlnString(seqNames,seqArray0))
     with tempAln1 as tempAln1: tempAln1.write(genomics.makeAlnString(seqNames,seqArray1))
     #first way validation
@@ -83,8 +89,8 @@ def phymlCrossVal(seqArray0, seqArray1, indNames, model, opt, phyml, prefix = ""
     except: lnL0 = np.NaN
     #remove files
     if not test:
-        os.system("rm " + tempAln0.name + "*")
-        os.system("rm " + tempAln1.name + "*")
+        for f in [f for f in os.listdir(tmpDir) if localName0 in f or localName1 in f]:
+            os.remove(tmpDir + "/" + f)
     return str(lnL0+lnL1)
 
 

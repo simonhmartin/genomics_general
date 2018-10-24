@@ -1,49 +1,50 @@
+#!/usr/bin/env python
 
-import argparse, sys, os, gzip
+import argparse, sys, os, gzip, tempfile
 import numpy as np
-import genomics
 
 from multiprocessing import Process, Queue
 from multiprocessing.queues import SimpleQueue
 from threading import Thread
 from time import sleep
 
-
+#add parent directory to path in case genomics.py is there instead of on the path
+sys.path.insert(1, os.path.realpath(os.path.pardir))
+import genomics
 
 ####################################################################################################################################
 
 #command that actually runs raxml and gets the bestTree 
-def raxTree(seqBlock, indNames, model, raxml, outgroup = None, uniqueTag = "", test = False, log="/dev/null"):
-    #write file
-    tempAln = open("temp." + uniqueTag + ".phy", "w")
-    tempAln.write(genomics.makeAlnString(indNames,seqBlock))
-    tempAln.close()
+def raxTree(seqArray, seqNames, model, raxml, outgroup = None, prefix = "", test = False, log="/dev/null"):
+    #temp file
+    tempAln = tempfile.NamedTemporaryFile(mode="w",prefix=prefix,suffix=".phy",dir=".",delete=False)
+    localName = tempAln.name.rsplit("/",1)[1]
+    with tempAln as tA: tA.write(genomics.makeAlnString(seqNames,seqArray))
     if outgroup is not None:
         og = " -o " + ",".join(outgroup)
     else:
         og = ""
     #raxCommand = raxml + " -s temp." + uniqueTag + ".phy -n " + uniqueTag + " -m " + model + og + " -V -f d -p 12345 --silent"
-    raxCommand = raxml + " -s temp." + uniqueTag + ".phy -n " + uniqueTag + " -m " + model + og + " -V -f d -p 12345 --silent >>" + log
+    raxCommand = raxml + " -s " + tempAln.name + " -n " + localName + " -m " + model + og + " -V -f d -p 12345 --silent >>" + log
     if test: print >> sys.stderr, "raxml command:\n", raxCommand
     os.system(raxCommand)
-    tempAln.close()
     #try retrieve the result  
     try:
-        treeFile = open("RAxML_bestTree." + uniqueTag, "r")
+        treeFile = open("RAxML_bestTree." + localName, "r")
         tree = treeFile.readline()
         treeFile.close()
     except:
         tree = "NA\n"
     #remove files
     if not test:
-        os.system("rm temp." + uniqueTag + ".phy*")
-        os.system("rm RAxML*" + uniqueTag)
+        for f in [f for f in os.listdir(".") if localName in f]:
+            os.remove(f)
     return tree
 
 
 '''A function that reads from the window queue, calls sume other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using'''
-def raxml_wrapper(windowQueue, resultQueue, windType, genoFormat, model, outgroup, raxml, minSites, minPerInd, minSNPs=None, test = False):
+def raxml_wrapper(windowQueue, resultQueue, windType, model, outgroup, raxml, minSites, minPerInd, minSNPs=None, test = False):
     while True:
         windowNumber,window = windowQueue.get()
         Nsites = window.seqLen()
@@ -51,12 +52,14 @@ def raxml_wrapper(windowQueue, resultQueue, windType, genoFormat, model, outgrou
         if windType == "coordinate" or windType == "predefined": scaf,start,end,mid = (window.scaffold, window.limits[0], window.limits[1], window.midPos())
         else: scaf,start,end,mid = (window.scaffold, window.firstPos(), window.lastPos(), window.midPos())
         data = [window.scaffold, str(start), str(end), str(mid), str(Nsites)]
+        prefix = scaf + "_" + str(start) + "_" + str(end) + "_"
         if Nsites >= minSites:
-            aln = genomics.genoToAlignment(window.seqDict(), genoFormat = genoFormat)
+            aln = genomics.genoToAlignment(window.seqDict(), genoFormat = "phased")
             indNames = window.names
             sitesPerInd = aln.seqNonNan()
-            if min(sitesPerInd) >= minPerInd and (minSNPs is None or len(aln.varSites(indices=np.array([i for i in range(aln.N) if aln.sampleNames[i] not in outgroup]))) >= minSNPs):
-                tree = raxTree(aln.array,aln.names,model,raxml, outgroup, uniqueTag = scaf + "_" + str(start), test = test, log = log)
+            if (min(sitesPerInd) >= minPerInd and
+                (minSNPs is None or len(aln.varSites(indices=np.array([i for i in range(aln.N) if aln.sampleNames[i] not in outgroup]))) >= minSNPs)):
+                tree = raxTree(aln.array,aln.names,model,raxml, outgroup, prefix, test = test, log = log)
             else: tree= "NA\n"
         else: tree = "NA\n"
         
@@ -133,8 +136,6 @@ parser.add_argument("-p", "--prefix", help="Prefix for output files", required =
 parser.add_argument("--exclude", help="File of scaffolds to exclude", required = False)
 parser.add_argument("--include", help="File of scaffolds to analyse", required = False)
 
-parser.add_argument("-f", "--genoFormat", help="Format of genotypes in genotypes file", action='store', choices = ("phased","haplo","diplo"), required = True)
-
 parser.add_argument("--individuals", help="Individuals to include, separated by comma", action = "store", metavar="ind1,ind2,ind3...")
 
 parser.add_argument("--outgroup", help="Outgroup individuals, separated by comma", action = "store", metavar="ind1,ind2,ind3...")
@@ -181,7 +182,6 @@ if not minPerInd: minPerInd = minSites
 
 
 genoFileName = args.genoFile
-genoFormat = args.genoFormat
 
 
 if args.individuals: indNames = args.individuals.split(",")
@@ -189,8 +189,6 @@ else: indNames = None
 
 if args.outgroup:
     outgroup = args.outgroup.split(",")
-    if genoFormat == "phased":
-        outgroup = [i + "_" + x for i in outgroup for x in ("A","B")]
     if test or verbose: print >> sys.stderr, "outgroups:", " ".join(outgroup)
 
 else: outgroup = None
@@ -220,6 +218,7 @@ dataFile = open(prefix + ".data.tsv", "w")
 dataFile.write("scaffold\tstart\tend\tmid\tsites\n")
 
 treesFile = gzip.open(prefix + ".trees.gz", "w") 
+
 
 ############################################################################################################################################
 
@@ -264,7 +263,7 @@ of course these will only start doing anything after we put data into the line q
 the function we call is actually a wrapper for another function.(s) This one reads from the line queue, passes to some analysis function(s), gets the results and sends to the result queue'''
 
 for x in range(threads):
-    worker = Process(target=raxml_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, model,
+    worker = Process(target=raxml_wrapper, args = (windowQueue, resultQueue, windType, model,
                                                    outgroup, raxml, minSites, minPerInd, args.minSNPs, test,))
     worker.daemon = True
     worker.start()
