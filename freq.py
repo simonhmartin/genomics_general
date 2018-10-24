@@ -14,7 +14,7 @@ from time import sleep
 
 '''A function that reads from the window queue, calls some other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using. This is the function that will run on each of the N cores.'''
-def freqs_wrapper(windowQueue, resultQueue, genoFormat, sampleData, minData, target, keepNanLines = False):
+def freqs_wrapper(windowQueue, resultQueue, genoFormat, sampleData, minData, target, asCounts, keepNanLines = False):
     while True:
         
         windowNumber,window = windowQueue.get() # retrieve window
@@ -47,10 +47,10 @@ def freqs_wrapper(windowQueue, resultQueue, genoFormat, sampleData, minData, tar
             #first find sites with sufficient data
             goodData = popAlns[pop].siteNonNan() >= minData
             sites = np.where(goodSites & goodData)[0]
-            baseFreqs = popAlns[pop].siteFreqs(sites)
+            baseFreqs = popAlns[pop].siteFreqs(sites, asCounts=asCounts)
             popColumns = baseColumns[sites,:].astype(int)
             popRows = np.repeat(np.arange(len(sites))[:,np.newaxis],popColumns.shape[1], axis = 1)
-            targetFreqs =  np.empty([aln.l, popColumns.shape[1]], dtype=float)
+            targetFreqs =  np.empty([aln.l, popColumns.shape[1]], dtype=int if asCounts else float)
             targetFreqs.fill(np.nan)
             if len(sites) >= 1: targetFreqs[sites,:] = baseFreqs[popRows,popColumns]
             popFreqs.append(np.around(targetFreqs, 4))
@@ -144,6 +144,8 @@ parser.add_argument("--popsFile", help="Optional file of sample names and popula
 #Frequency for all bases or a single base
 parser.add_argument("--target", help="All or single base frequency (derived assumes last pop is outgroup)", choices = ("minor","derived"),
                     action = "store", default="minor")
+
+parser.add_argument("--asCounts", help="Return drwquencies as counts", action='store_true')
 
 #haploid inds
 parser.add_argument("--haploid", help="Samples that are haploid (comma separated)", action = "store", metavar = "sample names")
@@ -248,7 +250,7 @@ of course these will only start doing anything after we put data into the line q
 the function we call is actually a wrapper for another function.(s) This one reads from the line queue, passes to some analysis function(s), gets the results and sends to the result queue'''
 for x in range(args.threads):
   worker = Process(target=freqs_wrapper, args = (windowQueue, resultQueue, args.genoFormat, sampleData,
-                                                 args.minData, args.target, args.keepNanLines,))
+                                                 args.minData, args.target, args.asCounts, args.keepNanLines,))
   worker.daemon = True
   worker.start()
   print >> sys.stderr, "started worker", x
