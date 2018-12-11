@@ -204,8 +204,7 @@ popNames = []
 popInds = []
 allInds = []
 
-if "popFreq" in args.analysis or "popDist" in args.analysis or "popPairDist" in args.analysis:
-    assert args.population is not None, "\nPopulation(s) not specified."
+if args.population is not None:
     for p in args.population:
         popNames.append(p[0])
         if len(p) > 1: popInds.append(p[1].split(","))
@@ -229,6 +228,11 @@ if args.samples is not None:
 if len(allInds) == 0:
     with gzip.open(args.genoFile, "r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r") as gf:
         allInds = gf.readline().split()[2:]
+
+#if at this point there are no populations specified, we just make a singe population called "all"
+if len(popNames) == 0 and ("popFreq" in args.analysis or "popDist" in args.analysis or "popPairDist" in args.analysis):
+    popNames.append("all")
+    popInds.append(allInds)
 
 if args.inferPloidy: ploidyDict = dict(zip(allInds,[None]*len(allInds)))
 elif args.genoFormat == "haplo": ploidyDict = dict(zip(allInds,[1]*len(allInds)))
