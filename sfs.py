@@ -168,8 +168,7 @@ verbose = args.verbose
 if args.genoFile: genoFile = gzip.open(args.genoFile, "r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r")
 else: genoFile = sys.stdin
 
-line = genoFile.readline()
-header = line.split()
+genoFileReader = genomics.GenoFileReader(genoFile)
 
 #IF INTERVALS ARE SPECIFIED, STORE THESE
 if intervalsFile:
@@ -207,7 +206,7 @@ if args.pop:
     allSamples = [s for popName in popDict for s in popDict[popName]]
 else:
     popNames = ["all"]
-    popDict = {"all": header[2:]}
+    popDict = {"all": genoFileReader.names}
 
 
 for popName in popNames: assert len(popDict[popName]) >= 1, "Population {} has no samples".format(popName) 
@@ -219,8 +218,6 @@ if polarized:
     outgroupName = popNames[-1]
 else:
     inPopNames = popNames
-
-sampleIndices = [header.index(s) for s in allSamples]
 
 if args.ploidy is not None:
     ploidy = args.ploidy if len(args.ploidy) != 1 else args.ploidy*len(allSamples)
@@ -284,24 +281,22 @@ sitesAnalysed = 0
 snpsCounted = 0
 
 ### for each line, check if its a scaf we want
-for line in genoFile:
+for siteData in genoFileReader.siteBySite():
     
     linesDone += 1
     if linesDone % report == 0: sys.stderr.write("\n{} lines done...\n".format(linesDone))
     
-    objects = line.split()
-    
-    if (include and objects[0] not in include) or (exclude and objects[0] in exclude): continue
+    if (include and siteData["scaffold"] not in include) or (exclude and siteData["scaffold"] in exclude): continue
     
     #if there are intervals, check whether the site matches any
     
-    if intervalsFile: siteIntervals = whichInterval(objects[0], int(objects[1]), scafIntervals, intervalPosDict)
+    if intervalsFile: siteIntervals = whichInterval(siteData["scaffold"], siteData["position"], scafIntervals, intervalPosDict)
     else: siteIntervals = [0]
     
     if not siteIntervals: continue
     
-    site = genomics.GenomeSite(genotypes=[objects[i] for i in sampleIndices], sampleNames=allSamples, popDict=popDict,
-                            ploidyDict=ploidyDict, genoFormat=args.genoFormat)
+    site = genomics.GenomeSite(genotypes=[siteData["GTs"][name] for name in allSamples], sampleNames=allSamples,
+                               popDict=popDict, ploidyDict=ploidyDict, genoFormat=args.genoFormat)
     
     
     popIndBaseCounts = dict([(popName, np.array([site.genotypes[indName].asBaseCounts() for indName in popDict[popName]]),) for popName in popNames])
