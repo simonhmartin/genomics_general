@@ -1,8 +1,8 @@
 #functions for manipulating sequences and alignments, working with sliding windows, doing population genetics etx.
 
 import numpy as np
-from copy import deepcopy
-import sys, string, time, re, math, itertools
+from copy import copy, deepcopy
+import sys, string, time, re, math, itertools, random
 
 np.seterr(divide='ignore')
 
@@ -74,6 +74,60 @@ def numArrayToSeqArray(numArray):
     for x in [0,1,2,3,-999]: seqArray[numArray==x] = numSeqDict[x]
     return seqArray
 
+####################################################################################
+########### some general list manipulation code
+
+#subset list into smaller lists
+def subset(things,subLen):
+    starts = range(0,len(things),subLen)
+    ends = [start+subLen for start in starts]
+    return [things[starts[i]:ends[i]] for i in range(len(starts))]
+
+#similar to above, but can have variable sizes of smaller lists, or can specify the number of chunks
+def chunkList(l, nChunks = None, chunkSize = None, return_indices=False):
+    N = len(l)
+    assert not nChunks is chunkSize is None
+    if nChunks is not None:
+        assert N % nChunks == 0, "list must be divizable by number of chunks"
+        chunkSize = [N/nChunks]*nChunks
+    elif isinstance(chunkSize, int):
+        assert N % chunkSize == 0, "list must be divizable by chunk size"
+        chunkSize = [chunkSize]*(N/chunkSize)
+    elif len(chunkSize) == 1:
+        assert N % chunkSize[0] == 0, "list must be divizable by chunk size"
+        chunkSize*=(N/chunkSize[0])
+    else: assert N == sum(chunkSize), "Chunk sizes must sum to list length"
+        
+    indices = []
+    r = range(N)
+    i = 0
+    for c in chunkSize:
+        indices.append(range(i,i+c))
+        i = i+c
+    if return_indices: return ([[l[x] for x in ind] for ind in indices], indices,)
+    else: return [[l[x] for x in ind] for ind in indices]
+
+
+def invertDictOfLists(d):
+    new = {}
+    for key, lst in d.items():
+        for i in lst:
+            try: new[i].append(key)
+            except: new[i] = [key]
+    new
+    return new
+
+
+def makeList(thing):
+    if isinstance(thing, str): return [thing]
+    else:
+        try: iter(thing)
+        except TypeError: return [thing]
+        else: return list(thing)
+
+
+#################################################################################################
+
 
 class Genotype:
     def __init__(self, geno, genoFormat, ploidy = None, forcePloidy=False):
@@ -101,6 +155,9 @@ class Genotype:
         else: ploidy = len(self.alleles)
         
         self.ploidy = ploidy
+        
+        #now make the alleles immutable
+        self.alleles = tuple(self.alleles)
         
         try: self.numAlleles = np.array([seqNumDict[a] for a in self.alleles])
         except: self.numAlleles = np.array([-999]*self.ploidy)
@@ -223,10 +280,49 @@ def parsePhase(genotypes):
 
 
 #Force diploid sequence to be haploid
-
 def forceHomo(sequence):
     return [homo(s) for s in sequence]
 
+
+#make haploid sequences N-ploid
+def haploToPhased(seqs, seqNames=None, ploidy=2, randomPhase=False):
+    #phase if ploidy is not 1
+    if ploidy is not 1:
+        _ploidy_ = makeList(ploidy)
+        Nseqs = len(seqs)
+        if len(_ploidy_) == 1:
+            assert Nseqs % _ploidy_[0] == 0, "Sequence number must be divizable by ploidy"
+            _ploidy_ = _ploidy_*(Nseqs/_ploidy_[0])
+        else:
+            assert Nseqs == sum(_ploidy_), "Ploidys must sum to number of sequences"
+        
+        indices = chunkList(range(Nseqs), chunkSize=_ploidy_, return_indices=True)[1]
+        
+        zipSeqs = [zip(*[seqs[x] for x in ind]) for ind in indices]
+        #randomize phase if necessary
+        if randomPhase:
+            for i in range(len(indices)):
+                if _ploidy_[i] > 1:
+                    for j in range(len(zipSeqs[i])):
+                        zipSeqs[i][j] = random.sample(zipSeqs[i][j], _ploidy_[i])
+        seqs = [["|".join(x) for x in zipSeq] for zipSeq in zipSeqs]
+        #if seqNames provided, return a tuple
+        if seqNames != None:
+            assert len(seqNames) == Nseqs, "incorrect number of sequence names"
+            seqNames = ["_".join([seqNames[x] for x in ind]) for ind in indices]
+            return (seqs, seqNames,)
+        #otherwise just return the seqs
+        return seqs
+
+def makeHaploidNames(names,ploidy=2):
+    ploidy=makeList(ploidy)
+    if len(ploidy) == 1: ploidy = ploidy*len(names)
+    ploidyDict = dict(zip(names, ploidy))
+    return [n + "_" + letter for n in names for letter in string.ascii_uppercase[:ploidyDict[n]]]
+
+def makePhasedNames(names,ploidy=2):
+    nameGroups = chunkList(names, chunkSize=ploidy)
+    return ["_".join(group) for group in nameGroups]
 
 
 ################################################################################################################
@@ -237,7 +333,7 @@ def forceHomo(sequence):
 class GenomeSite:
     
     def __init__(self, genoDict = None, genotypes = None, sampleNames = None, contig = None, position = 0, popDict = {},
-                 genoFormat = None, ploidyDict = None, forcePloidy=False):
+                 genoFormat = None, ploidyDict = None, forcePloidy=False, precompGTs=None, addToPrecomp=True):
         #genotypes is a list of genotypes as strings, lists or tuples in any format. e.g. ['AT', 'W', 'T|A', ('A','T)]
         #or use genoDict, which is a dictionary with sample names as the keys. Again, all genotype formats accepted
         if not genoDict:
@@ -255,9 +351,20 @@ class GenomeSite:
         
         self.genotypes = {}
         for sample in self.sampleNames:
-            self.genotypes[sample] = Genotype(genoDict[sample], genoFormat=genoFormat,
-                                              ploidy = self.ploidy[sample],forcePloidy=forcePloidy)
-        
+            #now, for each sample, if using precomputed genotypes, we check if the geno has already been computed
+            if precompGTs and genoDict[sample] in precompGTs[sample]:
+                self.genotypes[sample] = precompGTs[sample][genoDict[sample]]
+            
+            #if not, compute gentype normally
+            else:
+                self.genotypes[sample] = Genotype(genoDict[sample], genoFormat=genoFormat,
+                                                  ploidy = self.ploidy[sample],forcePloidy=forcePloidy)
+                
+                #add to precomputed
+                if precompGTs and addToPrecomp:
+                    precompGTs[sample][genoDict[sample]] = self.genotypes[sample]
+    
+    
     def asList(self, samples = None, pop = None, mode = "phased", alleles = None,
                codeDict=None, missing=None, alleleOrder=None, countAllele=None):
         if pop: samples = self.pops[pop]
@@ -332,18 +439,6 @@ class GenomeSite:
         present = sum([~self.genotypes[sample].isMissing() for sample in self.sampleNames])
         if prop: return 1.*present/(len(sampleNames))
         else: return present
-    
-    #def plug(self):
-    ## plug the major allele in place of missing data
-    #popMajor = majorAllele(self.asList(mode="bases"))
-    #if len(popMajor) == 1:
-        #for sample in popDict[popName]:
-            #if site.genotypes[sample].asDiplo() == "N":
-                #site.changeGeno(sample, popMajor[0])
-    #else:
-        #for sample in popDict[popName]:
-            #if site.genotypes[sample].asDiplo() == "N":
-                #site.changeGeno(sample, random.sample(popMajor,1)[0])
 
 
 def baseFreqs(bases, asCounts = False, asDict = False):
@@ -491,15 +586,11 @@ def HWEtest(obsHet, obsHom1, obsHom2, side = "both"):
     
     return p
 
-
-def inHWE(genotypes, P_value, side = "both", verbose = False):
-    #genotypes is a list of genotypes as strings, lists or tuples in any format. e.g. ['AT', 'W', 'T|A', ('A','T)]
-    site = Site(genotypes = genotypes)
-    diplos = site.asList(mode = "diplo")
+def inHWE(diplos, P_value, side = "both", verbose = False):
     diplos = [d for d in diplos if d != "N"]
     if verbose: sys.stderr.write(diplos)
     if len(diplos) == 0: return True
-    alleles = site.alleles()
+    alleles = unique([haplo(d) for d in diplos])
     if len(alleles) == 1: return True
     if len(alleles) > 2: return False
     Hom1Count = int(diplos.count(alleles[0]))
@@ -576,23 +667,6 @@ def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAllel
 ######################################################################################################################
 
 #modules for working with and analysing alignments
-
-def invertDictOfLists(d):
-    new = {}
-    for key, lst in d.items():
-        for i in lst:
-            try: new[i].append(key)
-            except: new[i] = [key]
-    new
-    return new
-
-
-def makeList(thing):
-    if isinstance(thing, str): return [thing]
-    else:
-        try: iter(thing)
-        except TypeError: return [thing]
-        else: return list(thing)
 
 
 class Alignment:
@@ -1443,7 +1517,8 @@ class GenoWindow:
         if step: self.limits = [l+step for l in self.limits]
         else: self.limits = newLimits
         i = 0
-        while i < len(self.positions) and self.positions[i] < self.limits[0]: i += 1
+        end = len(self.positions)
+        while i < end and self.positions[i] < self.limits[0]: i += 1
         #slide positions and sites
         self.positions = self.positions[i:]
         self.sites = self.sites[i:]
@@ -1470,53 +1545,176 @@ class GenoWindow:
 
 
 
-#site object class for storing the information about a single site
-class Site:
-    def __init__(self,scaffold=None, position=None, GTs=[]):
-        self.scaffold = scaffold
-        self.position = position
-        self.GTs = GTs
+#new test implementation of GenoWindow using deque 23 Oct 2018
 
-#function to parse a clls line into the Site class
-def parseGenoLine(line, splitPhased = False):
-    objects = line.split()
-    if len(objects) >= 3: site = Site(scaffold = objects[0], position = int(objects[1]), GTs = objects[2:])
-    else: site = Site()
-    if splitPhased: site.GTs = [a for GT in site.GTs for a in re.split('/|\|', GT)]
-    return site
+#from collections import deque
+
+#class GenoWindow:
+    #def __init__(self, scaffold = None, limits=[-np.inf,np.inf],sites = None, names = None, positions = None, ID = None):
+        #self.names = names if names is not None else []
+        #self.n = len(self.names)
+        #self.scaffold = scaffold
+        #self.limits = limits
+        #self.ID = ID
+        #if sites is not None and positions is not None:
+            #if not len(sites) == len(positions) == 0:
+                #assert len(set([len(site) for site in sites])) == 1, "Number of genotypes per site must be equal."
+                #assert len(sites[0]) == len(names), "Number of names must match number of genotypes per site."
+                #assert len(positions) == len(sites), "Positions must match number of sites"
+        #else:
+            #sites = deque(maxlen=self.limits[1]-self.limits[0]+1 if self.limits[0] > -np.inf and self.limits[1] < np.inf else None)
+            #positions = deque(maxlen=self.limits[1]-self.limits[0]+1 if self.limits[0] > -np.inf and self.limits[1] < np.inf else None)
+        #self.sites = sites if sites is not None else deque()
+        #self.positions = positions if positions is not None else deque()
+    
+    #def copy(self): return GenoWindow(scaffold=self.scaffold, limits=self.limits[:],
+                                      #sites=copy(self.sites), names=self.names[:], positions=copy(self.positions), ID=self.ID)
+    
+    ###method for adding
+    #def addBlock(self, sites, positions):
+        #assert len(set([len(site) for site in sites])) == 1, "Number of genotypes per site must be equal."
+        #assert len(sites[0]) == self.n, "Number of genotypes per site must match number of names."
+        #assert len(positions) == len(sites), "Positions must match number of sites"
+        #assert np.all(self.limits[0] <= positions <= self.limits[1]), "Position outside of window limit"
+        #self.sites += sites
+        #self.positions += positions
+    
+    #def addSite(self, GTs, position=np.NaN, ignorePosition=False):
+        #assert len(GTs) == self.n, "Number of genotypes per site must match number of names."
+        #if not ignorePosition:
+            #assert self.limits[0] <= position <= self.limits[1], "Position: " + str(position) + " outside of window limits: " + "-".join([str(l) for l in self.limits])
+        #else: position = np.NaN
+        #self.positions.append(position)
+        #self.sites.append(GTs)
+    
+    #def seqLen(self): return len(self.positions)
+    
+    #def firstPos(self): return min(self.positions)
+    
+    #def lastPos(self): return max(self.positions)
+    
+    #def slide(self,step=None,newLimits=None):
+        ##function to slide window along scaffold
+        #assert (step != None and step >= 1) or (newLimits != None and newLimits[0] > self.limits[0]), "Step must be > 0" 
+        #if step: self.limits = [l+step for l in self.limits]
+        #else: self.limits = newLimits
+        #if len(self.positions) == 0: return
+        #i = self.positions.popleft()
+        #self.sites.popleft()
+        #while i < self.limits[0]:
+            #try:
+                #i = self.positions.popleft()
+                #self.sites.popleft()
+            #except:
+                #break
+    
+    #def trim(self,right=False,remove=None,leave=None):
+        #assert remove != None or leave != None
+        #if not remove: remove=self.seqLen() - leave
+        #if not right:
+            ##trim positions and sites
+            #self.positions = self.positions[remove:]
+            #self.sites = self.sites[remove:]
+        #else:
+            #self.positions = self.positions[:-remove]
+            #self.sites = self.sites[:-remove]
+    
+    #def seqDict(self, names=None):
+        #if names is None: names = self.names
+        #indices = [self.names.index(n) for n in names]
+        #return dict(zip(names, [[site[i] for site in self.sites] for i in indices]))
+    
+    #def midPos(self):
+        #try: return int(round(sum(self.positions)/len(self.positions)))
+        #except: return np.NaN
+
+from time import sleep
+
+def parseGenoLine(line,names,splitPhased=False, precompDict=None, addToPrecomp=True):
+    if not line == "":
+        x,y,z = line.split(None,2)
+        #check if there is a precompiled genotype dictionary, and if so, check for the line in there
+        if precompDict and z in precompDict:
+            GTdict = precompDict[z]
+        else:
+            GTs = z.split()
+            if splitPhased: GTs = [a for GT in GTs for a in re.split('/|\|', GT)]
+            GTdict = dict(zip(names,GTs))
+            if (precompDict != None) and addToPrecomp:
+                precompDict[z] = GTdict
+        return {"scaffold": x, "position": int(y), "GTs": GTdict}
+    else:
+        return {"scaffold": None, "position": None, "GTs": None}
+
+
+class GenoFileReader:
+    def __init__(self,genoFile, splitPhased = False, ploidy=None, precomp=False, precompMaxSize=10):
+        self.genoFile = genoFile
+        self.names = genoFile.readline().split()[2:]
+        self.splitPhased=splitPhased
+        if splitPhased: self.names = makeHaploidNames(self.names, self.ploidy)
+        #add a dictionary for precompiled genotypes, if you want one
+        self.precompDict = {}
+        self.precompDict["__maxSize__"] = precompMaxSize
+        self.precompDict["__counter__"] = 0
+    
+    def siteBySite(self):
+        for line in self.genoFile:
+            yield parseGenoLine(line, self.names, self.splitPhased)
+    
+    def nextSite(self):
+        return parseGenoLine(self.genoFile.readline(), self.names, self.splitPhased)
+    
+    #here are equivalent reader functions that incorporate a dict of precompiled lines.
+    #Not default because it's not clear that this is any faster
+    def siteBySite_withPrecomp(self):
+        for line in self.genoFile:
+            yield parseGenoLine(line, self.names, self.splitPhased,
+                                self.precompDict, addToPrecomp=self.precompDict["__counter__"]<self.precompDict["__maxSize__"])
+    
+    def nextSite_withPrecomp(self):
+        return parseGenoLine(self.genoFile.readline(), self.names, self.splitPhased,
+                             self.precompDict, addToPrecomp=self.precompDict["__counter__"]<self.precompDict["__maxSize__"])
+
+
+#function to read entire genoFile into a window-like object
+def parseGenoFile(genoFile, names = None, includePositions = False, splitPhased=False, ploidy=None):
+    #file reader
+    reader=GenoFileReader(genoFile, splitPhased=splitPhased, ploidy=ploidy)
+    #get names
+    if names and splitPhased: names = makeHaploidNames(names, ploidy)
+    if not names: names = reader.names
+    #initialise window
+    window = GenoWindow(names = names)
+    #populate window
+    for siteData in reader.siteBySite():
+        window.addSite(GTs=[siteData["GTs"][name] for name in names], position=siteData["position"], ignorePosition= not includePositions)
+    
+    return window
 
 
 #sliding window generator function
 def slidingCoordWindows(genoFile, windSize, stepSize, names = None, splitPhased=False, ploidy = None,
                         include = None, exclude = None, skipDeepcopy = False):
-    #get file headers
-    headers = genoFile.readline().split()
-    allNames = headers[2:]
-    if names is None: names = allNames
-    if splitPhased:
-        if ploidy is None: ploidy = [2]*len(allNames)
-        ploidyDict = dict(zip(allNames, ploidy))
-        #if splitting phased, we need to split names too
-        allNames = [n + "_" + letter for n in allNames for letter in string.ascii_uppercase[:ploidyDict[n]]]
-        names = [n + "_" + letter for n in names for letter in string.ascii_uppercase[:ploidyDict[n]]]
-    #indices of samples
-    nameIndices = dict(zip(names, [allNames.index(name) for name in names])) # records file column for each name
+    #file reader
+    reader=GenoFileReader(genoFile, splitPhased=splitPhased, ploidy=ploidy)
+    #get names
+    if names and splitPhased: names = makeHaploidNames(names, ploidy)
+    if not names: names = reader.names
     #window counter
     windowsDone = 0
-    #initialise an empty window
-    window = GenoWindow()
-    #read first line
-    line = genoFile.readline()
-    site = parseGenoLine(line,splitPhased)
-    while line:
+    #initialise window
+    window = GenoWindow(names = names)
+    #first site
+    site = reader.nextSite()
+    while site["position"] is not None:
         #build window
-        while site.scaffold == window.scaffold and site.position <= window.limits[1]:
-            if site.position >= window.limits[0]:
+        while site["scaffold"] == window.scaffold and site["position"] <= window.limits[1]:
+            if site["position"] >= window.limits[0]:
                 #add this site to the window
-                window.addSite(GTs=[site.GTs[nameIndices[name]] for name in names], position=site.position)
+                window.addSite(GTs=[site["GTs"][name] for name in names], position=site["position"])
             #read next line
-            line = genoFile.readline()
-            site = parseGenoLine(line,splitPhased)
+            site = reader.nextSite()
         
         '''if we get here, the line in hand is incompatible with the currrent window
             If the window is not empty, yield it'''
@@ -1529,25 +1727,24 @@ def slidingCoordWindows(genoFile, windSize, stepSize, names = None, splitPhased=
         
         #now we need to make a new window
         #if on same scaffold, just slide along
-        if site.scaffold == window.scaffold:
+        if site["scaffold"] == window.scaffold:
             window.slide(step = stepSize)
             window.ID = windowsDone + 1
         
         #otherwise we're on a new scaffold (or its the end of the file)
         else:
             #if its one we want to analyse, start new window
-            if (not include and not exclude) or (include and site.scaffold in include) or (exclude and site.scaffold not in exclude):
-                window = GenoWindow(scaffold = site.scaffold, limits=[1,windSize], names = names, ID = windowsDone + 1)
+            if (not include and not exclude) or (include and site["scaffold"] in include) or (exclude and site["scaffold"] not in exclude):
+                window = GenoWindow(scaffold = site["scaffold"], limits=[1,windSize], names = names, ID = windowsDone + 1)
             
             #if its a scaf we don't want, were going to read lines until we're on one we do want
             else:
-                badScaf = site.scaffold
-                while site.scaffold == badScaf or (include and site.scaffold not in include and site.scaffold is not None) or (exclude and site.scaffold in exclude and site.scaffold is not None):
-                    line = genoFile.readline()
-                    site = parseGenoLine(line,splitPhased)
+                badScaf = site["scaffold"]
+                while site["scaffold"] == badScaf or (include and site["scaffold"] not in include and site["scaffold"] is not None) or (exclude and site["scaffold"] in exclude and site["scaffold"] is not None):
+                    site = reader.nextSite()
             
         #if we've reached the end of the file, break
-        if len(line) <= 1:
+        if site["position"] is None:
             break
     
 
@@ -1556,33 +1753,24 @@ def slidingCoordWindows(genoFile, windSize, stepSize, names = None, splitPhased=
 def slidingSitesWindows(genoFile, windSites, overlap, maxDist = np.inf, minSites = None, names = None,
                         splitPhased=False, ploidy=None, include = None, exclude = None, skipDeepcopy = False):
     if not minSites: minSites = windSites #if minSites < eindSites, windows at ends of scaffolds can still be emmitted
-    #get file headers
-    headers = genoFile.readline().split()
-    allNames = headers[2:]
-    if names is None: names = allNames
-    if splitPhased:
-        if ploidy is None: ploidy = [2]*len(allNames)
-        ploidyDict = dict(zip(allNames, ploidy))
-        #if splitting phased, we need to split names too
-        allNames = [n + "_" + letter for n in allNames for letter in string.ascii_uppercase[:ploidyDict[n]]]
-        names = [n + "_" + letter for n in names for letter in string.ascii_uppercase[:ploidyDict[n]]]
-    #indices of samples
-    nameIndices = dict(zip(names, [allNames.index(name) for name in names])) # records file column for each name
+    #file reader
+    reader=GenoFileReader(genoFile, splitPhased=splitPhased, ploidy=ploidy)
+    #get names
+    if names and splitPhased: names = makeHaploidNames(names, ploidy)
+    if not names: names = reader.names
     #window counter
     windowsDone = 0
-    #initialise an empty window
-    window = GenoWindow()
-    #read first line
-    line = genoFile.readline()
-    site = parseGenoLine(line,splitPhased)
+    #initialise window
+    window = GenoWindow(names = names)
+    #first site
+    site = reader.nextSite()
     while line:
         #build window
-        while site.scaffold == window.scaffold and window.seqLen() < windSites and (window.seqLen() == 0 or site.position - window.firstPos() <= maxDist):
+        while site["scaffold"] == window.scaffold and window.seqLen() < windSites and (window.seqLen() == 0 or site["position"] - window.firstPos() <= maxDist):
             #add this site to the window
-            window.addSite(GTs=[site.GTs[nameIndices[name]] for name in names], position=site.position)
+            window.addSite(GTs=[site["GTs"][name] for name in names], position=site["position"])
             #read next line
-            line = genoFile.readline()
-            site = parseGenoLine(line,splitPhased)
+            site = reader.nextSite()
         
         '''if we get here, either the window is full, or the line in hand is incompatible with the currrent window
             If the window has more than minSites, yield it'''
@@ -1596,45 +1784,43 @@ def slidingSitesWindows(genoFile, windSites, overlap, maxDist = np.inf, minSites
             
             #now we need to make a new window
             #if on same scaffold, just trim
-            if site.scaffold == window.scaffold:
+            if site["scaffold"] == window.scaffold:
                 window.trim(leave = overlap)
                 window.ID = windowsDone + 1
             
             #otherwise we're on a new scaffold (or its the end of the file)
             else:
                 #if its one we want to analyse, start new window
-                if (not include and not exclude) or (include and site.scaffold in include) or (exclude and site.scaffold not in exclude):
-                    window = GenoWindow(scaffold = site.scaffold, names = names, ID = windowsDone + 1)
+                if (not include and not exclude) or (include and site["scaffold"] in include) or (exclude and site["scaffold"] not in exclude):
+                    window = GenoWindow(scaffold = site["scaffold"], names = names, ID = windowsDone + 1)
                 
                 #if its a scaf we don't want, were going to read lines until we're on one we do want
                 else:
-                    badScaf = site.scaffold
-                    while site.scaffold == badScaf or (include and site.scaffold not in include and site.scaffold is not None) or (exclude and site.scaffold in exclude and site.scaffold is not None):
+                    badScaf = site["scaffold"]
+                    while site["scaffold"] == badScaf or (include and site["scaffold"] not in include and site["scaffold"] is not None) or (exclude and site["scaffold"] in exclude and site["scaffold"] is not None):
                     
-                        line = genoFile.readline()
-                        site = parseGenoLine(line,splitPhased)
+                        site = reader.nextSite()
         
         #If there are insufficient sites, and we're on the same scaffold, just trim off the furthest left site
         else:
-            if site.scaffold == window.scaffold:
+            if site["scaffold"] == window.scaffold:
                 window.trim(remove = 1)
             
             #If we're on a new scaffold, we do as above
             else:
                 #if its one we want to analyse, start new window
-                if (not include and not exclude) or (include and site.scaffold in include) or (exclude and site.scaffold not in exclude):
-                    window = GenoWindow(scaffold = site.scaffold, names = names, ID = windowsDone + 1)
+                if (not include and not exclude) or (include and site["scaffold"] in include) or (exclude and site["scaffold"] not in exclude):
+                    window = GenoWindow(scaffold = site["scaffold"], names = names, ID = windowsDone + 1)
                 
                 #if its a scaf we don't want, were going to read lines until we're on one we do want
                 else:
-                    badScaf = site.scaffold
-                    while site.scaffold == badScaf or (include and site.scaffold not in include and site.scaffold is not None) or (exclude and site.scaffold in exclude and site.scaffold is not None):
+                    badScaf = site["scaffold"]
+                    while site["scaffold"] == badScaf or (include and site["scaffold"] not in include and site["scaffold"] is not None) or (exclude and site["scaffold"] in exclude and site["scaffold"] is not None):
                     
-                        line = genoFile.readline()
-                        site = parseGenoLine(line,splitPhased)
+                        site = reader.nextSite()
         
         #if we've reached the end of the file, break
-        if len(line) <= 1:
+        if site["position"] is None:
             break
 
 
@@ -1643,23 +1829,14 @@ def predefinedCoordWindows(genoFile, windCoords, names = None, splitPhased=False
     #get the order of scaffolds
     allScafs = [w[0] for w in windCoords]
     scafs = sorted(set(allScafs), key=lambda x: allScafs.index(x))
-    #get file headers
-    headers = genoFile.readline().split()
-    allNames = headers[2:]
-    if names is None: names = allNames
-    if splitPhased:
-        if ploidy is None: ploidy = [2]*len(allNames)
-        ploidyDict = dict(zip(allNames, ploidy))
-        #if splitting phased, we need to split names too
-        allNames = [n + "_" + letter for n in allNames for letter in string.ascii_uppercase[:ploidyDict[n]]]
-        names = [n + "_" + letter for n in names for letter in string.ascii_uppercase[:ploidyDict[n]]]
-    #indices of samples
-    nameIndices = dict(zip(names, [allNames.index(name) for name in names])) # records file column for each name
+    #file reader
+    reader=GenoFileReader(genoFile, splitPhased=splitPhased, ploidy=ploidy)
+    #get names
+    if names and splitPhased: names = makeHaploidNames(names, ploidy)
+    if not names: names = reader.names
     window = None
     #read first line
-    line = genoFile.readline()
-    site = parseGenoLine(line,splitPhased)
-    #we're going to read one line each loop and only releae windows when they're done
+    site = reader.nextSite()
     for w in range(len(windCoords)):
         
         #make new window, or if on same scaf just slide it
@@ -1676,24 +1853,21 @@ def predefinedCoordWindows(genoFile, windCoords, names = None, splitPhased=False
         windScafIdx = scafs.index(window.scaffold)
         
         #if the current scaffold is not in the windows, or is above the window, keep reading
-        while site.scaffold and (site.scaffold not in scafs or scafs.index(site.scaffold) < windScafIdx):
-            badScaf = site.scaffold
-            while site.scaffold == badScaf:
-                    line = genoFile.readline()
-                    site = parseGenoLine(line,splitPhased)
+        while site["scaffold"] and (site["scaffold"] not in scafs or scafs.index(site["scaffold"]) < windScafIdx):
+            badScaf = site["scaffold"]
+            while site["scaffold"] == badScaf:
+                    site = reader.nextSite()
         
         #if we're on the right scaffold but abve thwe windiow, keep reading
-        while site.scaffold == window.scaffold and site.position < window.limits[0]:
-            line = genoFile.readline()
-            site = parseGenoLine(line,splitPhased)
+        while site["scaffold"] == window.scaffold and site["position"] < window.limits[0]:
+            site = reader.nextSite()
         
         #if we are in a window - build it
-        while site.scaffold == window.scaffold and window.limits[0] <= site.position <= window.limits[1]:
+        while site["scaffold"] == window.scaffold and window.limits[0] <= site["position"] <= window.limits[1]:
             #add this site to the window
-            window.addSite(GTs=[site.GTs[nameIndices[name]] for name in names], position=site.position)
+            window.addSite(GTs=[site["GTs"][name] for name in names], position=site["position"])
             #read next line
-            line = genoFile.readline()
-            site = parseGenoLine(line,splitPhased)
+            site = reader.nextSite()
         
         '''When we get here, either:
             We're on the right scaffold but below the current window
@@ -1704,53 +1878,44 @@ def predefinedCoordWindows(genoFile, windCoords, names = None, splitPhased=False
         if skipDeepcopy: yield window
         else: yield deepcopy(window)
         
-        if len(line) <= 1: break
+        if site["position"] is None:
+            break
 
 
 #function to read blocks of n lines
 #sliding window generator function
 def nonOverlappingSitesWindows(genoFile, windSites, names = None, splitPhased=False, ploidy=None, include = None, exclude = None):
-    #get file headers
-    headers = genoFile.readline().split()
-    allNames = headers[2:]
-    if names is None: names = allNames
-    if splitPhased:
-        if ploidy is None: ploidy = [2]*len(allNames)
-        ploidyDict = dict(zip(allNames, ploidy))
-        #if splitting phased, we need to split names too
-        allNames = [n + "_" + letter for n in allNames for letter in string.ascii_uppercase[:ploidyDict[n]]]
-        names = [n + "_" + letter for n in names for letter in string.ascii_uppercase[:ploidyDict[n]]]
-    #indices of samples
-    nameIndices = dict(zip(names, [allNames.index(name) for name in names])) # records file column for each name
+    #file reader
+    reader=GenoFileReader(genoFile, splitPhased=splitPhased, ploidy=ploidy)
+    #get names
+    if names and splitPhased: names = makeHaploidNames(names, ploidy)
+    if not names: names = reader.names
     #blocks counter
     windowsDone = 0
     #initialise an empty block
     window = None
     #read first line
-    line = genoFile.readline()
-    site = parseGenoLine(line, splitPhased)
+    site = reader.nextSite()
     while True:
         #initialise window
         #if its a scaffold we want to analyse, start new window
-        if (not include and not exclude) or (include and site.scaffold in include) or (exclude and site.scaffold not in exclude):
-            window = GenoWindow(scaffold = site.scaffold, names = names, ID = windowsDone + 1)
+        if (not include and not exclude) or (include and site["scaffold"] in include) or (exclude and site["scaffold"] not in exclude):
+            window = GenoWindow(scaffold = site["scaffold"], names = names, ID = windowsDone + 1)
             
         #if its a scaf we don't want, were going to read lines until we're on one we do want
         else:
             window = None
-            badScaf = site.scaffold
-            while site.scaffold == badScaf or (include and site.scaffold not in include and site.scaffold is not None) or (exclude and site.scaffold in exclude and site.scaffold is not None):
+            badScaf = site["scaffold"]
+            while site["scaffold"] == badScaf or (include and site["scaffold"] not in include and site["scaffold"] is not None) or (exclude and site["scaffold"] in exclude and site["scaffold"] is not None):
             
-                line = genoFile.readline()
-                site = parseGenoLine(line,splitPhased)
+                site = reader.nextSite()
 
         #build window
-        while window and site.scaffold == window.scaffold and window.seqLen() < windSites:
+        while window and site["scaffold"] == window.scaffold and window.seqLen() < windSites:
             #add this site to the window
-            window.addSite(GTs=[site.GTs[nameIndices[name]] for name in names], position=site.position)
+            window.addSite(GTs=[site["GTs"][name] for name in names], position=site["position"])
             #read next line
-            line = genoFile.readline()
-            site = parseGenoLine(line,splitPhased)
+            site = reader.nextSite()
         
         '''if we get here, either the window is full, or the line in hand is incompatible with the currrent window
             If the window has more than minSites, yield it'''
@@ -1760,40 +1925,14 @@ def nonOverlappingSitesWindows(genoFile, windSites, names = None, splitPhased=Fa
             yield window
                 
         #if we've reached the end of the file, break
-        if len(line) <= 1: break
+        if site["position"] is None:
+            break
 
-
-#function to read entire genoFile into a window-like object
-def parseGenoFile(genoFile, names = None, includePositions = False, splitPhased=False, ploidy=None):
-    #get file headers
-    headers = genoFile.readline().split()
-    allNames = headers[2:]
-    if names is None: names = allNames
-    if splitPhased:
-        if ploidy is None: ploidy = [2]*len(allNames)
-        ploidyDict = dict(zip(allNames, ploidy))
-        #if splitting phased, we need to split names too
-        allNames = [n + "_" + letter for n in allNames for letter in string.ascii_uppercase[:ploidyDict[n]]]
-        names = [n + "_" + letter for n in names for letter in string.ascii_uppercase[:ploidyDict[n]]]
-    #indices of samples
-    nameIndices = dict(zip(names, [allNames.index(name) for name in names])) # records file column for each name
-    #initialise an empty window
-    window = GenoWindow(names = names)
-    for line in iter(genoFile.readline,''):
-        site = parseGenoLine(line,splitPhased)
-        window.addSite(GTs=[site.GTs[nameIndices[name]] for name in names], position=site.position, ignorePosition= not includePositions)
-    
-    return window
 
 
 ##########################################################################################################
 
 #functions to make and parse alignment strings in fasta or phylip format
-
-def subset(things,subLen):
-    starts = range(0,len(things),subLen)
-    ends = [start+subLen for start in starts]
-    return [things[starts[i]:ends[i]] for i in range(len(starts))]
 
 
 def makeAlnString(names=None, seqs=None, seqDict=None, outFormat="phylip", lineLen=None, NtoGap=False):
