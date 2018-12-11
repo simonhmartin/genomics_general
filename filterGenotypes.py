@@ -18,6 +18,8 @@ def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,alleleOrde
                     minCalls,minPopCalls,minAlleles,maxAlleles,minPopAlleles,maxPopAlleles,minVarCount,maxHet,minFreq,maxFreq,
                     HWE_P,HWE_side,popDict,ploidyDict,fixed,nearlyFixedDiff,forcePloidy,thinDist,noTest):
     sampleIndices = [headers.index(s) for s in samples]
+    #dict of precomputed genotypes
+    precompGTs = dict([(s, dict(),) for s in samples]) if precomp else None
     while True:
         podNumber,inPod = inQueue.get()
         if verbose: print >> sys.stderr, "Pod", podNumber, "received for analysis."
@@ -29,7 +31,7 @@ def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,alleleOrde
             objects = line.split()
             if (include and objects[0] not in include) or (exclude and objects[0] in exclude): continue
             site = genomics.GenomeSite(genotypes=[objects[i] for i in sampleIndices], sampleNames=samples, popDict=popDict,
-                                       ploidyDict=ploidyDict, genoFormat=inputGenoFormat, forcePloidy=forcePloidy)
+                                       ploidyDict=ploidyDict, genoFormat=inputGenoFormat, forcePloidy=forcePloidy, precompGTs=precompGTs)
             goodSite = True
             if thinDist:
                 pos = int(objects[1])
@@ -173,7 +175,8 @@ parser.add_argument("--nearlyFixedDiff", help="Only variants where frequency dif
 #minimum distance for thinning
 parser.add_argument("--thinDist", help="Allowed distance between sites for thinning", type=int, action = "store", metavar = "integer")
 
-parser.add_argument("--podSize", help="Lines to analyse in each thread simultaneously", type=int, action = "store", default = 100000)
+parser.add_argument("--podSize", help="Lines to analyse in each thread simultaneously", type=int, action = "store", default = 10000)
+parser.add_argument("--noPrecomp", help="Do not use precomputed genotypes shortcut", action = "store_true")
 parser.add_argument("--noTest", help="Output all lines (for debugging mostly)", action = "store_true")
 
 
@@ -259,6 +262,8 @@ if args.pop:
     
 nProcs = args.threads
 verbose = args.verbose
+
+precomp = not args.noPrecomp
 
 ##########################################################################################################################
 
