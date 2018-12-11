@@ -50,15 +50,17 @@ def freqs_wrapper(windowQueue, resultQueue, genoFormat, sampleData, minData, tar
             baseFreqs = popAlns[pop].siteFreqs(sites, asCounts=asCounts)
             popColumns = baseColumns[sites,:].astype(int)
             popRows = np.repeat(np.arange(len(sites))[:,np.newaxis],popColumns.shape[1], axis = 1)
-            targetFreqs =  np.empty([aln.l, popColumns.shape[1]], dtype=int if asCounts else float)
-            targetFreqs.fill(np.nan)
+            targetFreqs =  np.zeros([aln.l, popColumns.shape[1]], dtype=int if asCounts else float)
+            if not asCounts: targetFreqs.fill(np.nan)
             if len(sites) >= 1: targetFreqs[sites,:] = baseFreqs[popRows,popColumns]
             popFreqs.append(np.around(targetFreqs, 4))
         
         allFreqs = np.hstack(popFreqs)
         
         if not keepNanLines:
-            outSites = np.where(~np.apply_along_axis(np.all, 1, np.isnan(allFreqs)))[0]
+            if not asCounts:
+                outSites = np.where(~np.apply_along_axis(np.all, 1, np.isnan(allFreqs)))[0]
+            else: outSites = np.where(~np.apply_along_axis(np.all, 1, allFreqs==0))[0]
         else: outSites = range(aln.l)
                 
         outArray = np.column_stack(([window.scaffold]*len(outSites),
@@ -147,8 +149,9 @@ parser.add_argument("--target", help="All or single base frequency (derived assu
 
 parser.add_argument("--asCounts", help="Return drwquencies as counts", action='store_true')
 
-#haploid inds
-parser.add_argument("--haploid", help="Samples that are haploid (comma separated)", action = "store", metavar = "sample names")
+#define ploidy if not 2
+parser.add_argument("--ploidy", help="Ploidy for each sample", action = "store", type=int, nargs="+")
+parser.add_argument("--ploidyFile", help="File with samples names and ploidy as columns", action = "store")
 
 #optional missing data argument
 parser.add_argument("--minData", help="Minimum proportion of non-missing data per population", type=float, action = "store", default = 0.1, metavar = "proportion")
@@ -188,10 +191,13 @@ for p in popInds: assert len(p) >= 1, "All populations must be represented by at
 
 allInds = list(set([i for p in popInds for i in p]))
 
-ploidyDict = dict(zip(allInds,[2]*len(allInds)))
-if args.haploid:
-    for sample in args.haploid.split(","):
-        ploidyDict[sample] = 1
+if args.ploidy is not None:
+    ploidy = args.ploidy if len(args.ploidy) != 1 else args.ploidy*len(allInds)
+    assert len(ploidy) == len(allInds), "Incorrect number of ploidy values supplied."
+    ploidyDict = dict(zip(allInds,ploidy))
+elif args.ploidyFile is not None:
+    with open(args.ploidyFile, "r") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
+else: ploidyDict = dict(zip(allInds,[2]*len(allInds)))
 
 sampleData = genomics.SampleData(popNames = popNames, popInds = popInds, ploidyDict = ploidyDict)
 
