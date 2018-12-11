@@ -5,7 +5,6 @@
 
 import argparse, sys, gzip, re, subprocess
 
-
 class vcfGenoData:
     
     def __init__(self, formatList, genoList):
@@ -14,13 +13,9 @@ class vcfGenoData:
         for x in range(len(genoInfo)):
             setattr(self, genoInfoNames[x], genoInfo[x])
         if hasattr(self,"GT"):
-            if len(self.GT) == 3:
-                self.phase = self.GT[1]
-                self.alleles = self.GT.split(self.phase)
-            elif len(self.GT) == 1:
-                self.phase = "/"
-                self.alleles = self.GT
-            else: raise ValueError, "Error parsing genotype:" + str(self.GT)
+            self.phase = "|" if "|" in self.GT else "/"
+            try: self.alleles = re.split('\||/',self.GT)
+            except: raise ValueError, "Error parsing genotype:" + str(self.GT)
     
     def getType(self):
         if not hasattr(self,"GT"): return None
@@ -203,9 +198,14 @@ class Reader:
             yield site
             line = self.fileObj.readline()
 
+#def tabixStream(fileName, chrom, start, end):
+    #region = chrom+":"+str(start)+"-"+str(end)  
+    #return subprocess.Popen(['tabix',fileName, region], stdout=subprocess.PIPE, bufsize=1)
+
+#using pytabix (THIS HAS NOT BEEN TESTED)
 def tabixStream(fileName, chrom, start, end):
-    region = chrom+":"+str(start)+"-"+str(end)  
-    return subprocess.Popen(['tabix',fileName, region], stdout=subprocess.PIPE, bufsize=1)
+    tb = tabix.open(fileName)
+    return tb.query(chrom, start, end)
 
 def tabixLines(fileName, chrom, start, end):
     stream = tabixStream(fileName, chrom, start, end)
@@ -358,11 +358,12 @@ if __name__ == "__main__":
     for vcfSite in vcfSites:
         if (exclude and vcfSite.CHROM in exclude) or (include and vcfSite.CHROM not in include): continue
         #print >> sys.stderr, vcfSite.CHROM, vcfSite.POS, vcfSite.REF, vcfSite.ALT, vcfSite.getType()
-        if skipIndels and vcfSite.getType() is "indel": continue
         if skipMono and vcfSite.getType() is "mono": continue
         if minQual and canFloat(vcfSite.QUAL) and float(vcfSite.QUAL) < minQual: continue
         if args.field is not None: output = vcfSite.getGenoField(args.field,samples=samples, missing=args.missing)
-        else: output = vcfSite.getGenotypes(gtFilters,asList=True,withPhase=True,samples=samples,missing=args.missing,
-                                            allowOnly="ACGT",keepPartial=False,ploidyDict=ploidyDict)
+        else:
+            allowed=["A","C","G","T"] if skipIndels else None
+            output = vcfSite.getGenotypes(gtFilters,asList=True,withPhase=True,samples=samples,missing=args.missing,
+                                            allowOnly=allowed,keepPartial=False,ploidyDict=ploidyDict)
         Out.write(outSep.join([vcfSite.CHROM, str(vcfSite.POS)] + output) + "\n")
 
