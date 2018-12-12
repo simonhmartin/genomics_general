@@ -26,12 +26,19 @@ get_block_indices <- function(block_size, positions, chromosomes = NULL){
         }
     }
 
-
+#this function runs the jackknife procedure by calculating pseudovalues by removing one block at a time
+#if the arguments specified by "..." are vectors, they will be indexed as they are.
+#if they have two dimensions, they will be indexed along the first dimension
 get_jackknife_sd <- function(block_indices, FUN, ...){
     n_blocks <- length(block_indices)
     args = list(...)
     overall_mean <- FUN(...)
-    sd(sapply(1:n_blocks, function(i) overall_mean*n_blocks - do.call(FUN, lapply(args, function(a) a[-block_indices[[i]]]))*(n_blocks-1)))
+    if (is.null(dim(args[1])) == TRUE){
+        return(sd(sapply(1:n_blocks, function(i) overall_mean*n_blocks - do.call(FUN, lapply(args, function(a) a[-block_indices[[i]]]))*(n_blocks-1))))
+        }
+    else{
+        return(sd(sapply(1:n_blocks, function(i) overall_mean*n_blocks - do.call(FUN, lapply(args, function(a) a[-block_indices[[i]],]))*(n_blocks-1))))
+        }
     }
 
 
