@@ -335,7 +335,7 @@ else: scafsToExclude = None
 
 if args.include:
     scafsToInclude = args.include.split(",")
-    print >> sys.stderr, len(scafsToInclude), "scaffolds will be abalysed."
+    print >> sys.stderr, len(scafsToInclude), "scaffolds will be analysed."
 elif args.includeFile:
     with open(args.includeFile, "rU") as scafsFile: scafsToInclude = [line.rstrip() for line in scafsFile]
     print >> sys.stderr, len(scafsToInclude), "scaffolds will be analysed."
