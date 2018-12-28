@@ -1,4 +1,4 @@
-import sys,argparse,gzip
+import sys,argparse,gzip,time
 import genomics
 
 parser = argparse.ArgumentParser()
@@ -21,10 +21,9 @@ else: genoFile = sys.stdin
 genoOut = open(args.genoOutFile, "w")
 snpOut = open(args.snpOutFile, "w")
 
-headers = genoFile.readline().split()
-allNames = headers[2:]
+reader=genomics.GenoFileReader(genoFile)
 
-if args.samples is None: samples = allNames
+if args.samples is None: samples = reader.names
 else: samples = args.samples.split(",")
 
 
@@ -45,28 +44,29 @@ if args.cumulativePos:
     chromOffset[str(args.nullChrom)] = 0
 
 
-for line in genoFile:
-    site = genomics.parseGenoLine(line)
+for siteData in reader.siteBySite():
     
-    genomeSite = genomics.GenomeSite(genotypes = site.GTs, sampleNames = allNames, genoFormat=args.genoFormat)
+    genomeSite = genomics.GenomeSite(genoDict = siteData["GTs"], genoFormat=args.genoFormat)
     
-    if len(genomeSite.alleles()) == 2:
+    alleles = genomeSite.alleles()
+    
+    if len(alleles) == 2:
         counts = genomeSite.asList(mode="count", samples=samples, missing = 9)
-
+        
         genoOut.write("".join([str(c) for c in counts]) + "\n")
         
-        if site.scaffold != scaf:
+        if siteData["scaffold"] != scaf:
             #different scaffold from the last site
             #if using cumulative positions, change the offset for the last chrom
             if chrom is not None and args.cumulativePos: chromOffset[chrom] = pos
             #now get new scaf, chrom and pos
-            scaf = site.scaffold
+            scaf = siteData["scaffold"]
             try: chrom = chromDict[scaf]
             except: chrom = str(args.nullChrom)
         
-        pos = site.position if not args.cumulativePos else site.position + chromOffset[chrom]
+        pos = siteData["position"] if not args.cumulativePos else siteData["position"] + chromOffset[chrom]
         
-        snpOut.write(str(linesDone) + "\t" + chrom + "\t" + "0.0" + "\t" + str(pos) + "\n")
+        snpOut.write("\t".join([str(linesDone), chrom, "0.0", str(pos), alleles[0], alleles[1]]) + "\n")
     
     linesDone += 1
     if linesDone % 100000 == 0: print linesDone, "lines done..."
