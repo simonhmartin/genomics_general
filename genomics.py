@@ -347,7 +347,7 @@ class GenomeSite:
         self.contig = contig
         self.position = position
         self.pops = popDict
-        self.ploidy = ploidyDict if ploidyDict else dict(zip(sampleNames, [None]*len(sampleNames)))
+        self.ploidy = ploidyDict if ploidyDict else dict(zip(self.sampleNames, [None]*len(self.sampleNames)))
         
         self.genotypes = {}
         for sample in self.sampleNames:
