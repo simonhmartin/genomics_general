@@ -1764,7 +1764,7 @@ def slidingSitesWindows(genoFile, windSites, overlap, maxDist = np.inf, minSites
     window = GenoWindow(names = names)
     #first site
     site = reader.nextSite()
-    while line:
+    while site:
         #build window
         while site["scaffold"] == window.scaffold and window.seqLen() < windSites and (window.seqLen() == 0 or site["position"] - window.firstPos() <= maxDist):
             #add this site to the window
