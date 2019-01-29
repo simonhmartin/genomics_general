@@ -208,7 +208,7 @@ else: genoFile = sys.stdin
 outs = {}
 
 if args.outFile: outs["main"] = gzip.open(args.outFile, "w") if args.outFile.endswith(".gz") else open(args.outFile, "w")
-else: outs["main"] = [sys.stdout]
+else: outs["main"] = sys.stdout
 
 if args.windowDataOutFile:
     outs["windows"] = gzip.open(args.args.windowDataOutFile, "w") if args.args.windowDataOutFile.endswith(".gz") else open(args.args.windowDataOutFile, "w")
@@ -323,7 +323,7 @@ for out in outs.values(): out.close()
 print >> sys.stderr, str(windowsQueued), "windows were tested.\n"
 print >> sys.stderr, str(resultsWritten), "results were written.\n"
 
-print "\nDone."
+print >> sys.stderr, "\nDone."
 
 sys.exit()
 
