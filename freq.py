@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import argparse, sys, gzip, random
 import numpy as np
 
