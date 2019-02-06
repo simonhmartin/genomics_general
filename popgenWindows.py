@@ -43,7 +43,7 @@ def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, mi
             if "popFreq" in analysis:
                 statsDict.update(Aln.groupFreqStats())
             
-            if "popDist" in analysis:
+            if "popDist" in analysis or "popPairDist" in analysis:
                 statsDict.update(Aln.groupDistStats(doPairs = "popPairDist" in analysis))
             
             if "indPairDist" in analysis:
