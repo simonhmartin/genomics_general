@@ -13,6 +13,7 @@ parser.add_argument("-M", "--mode", help="Output mode for separate sequences", a
 parser.add_argument("-C", "--chrom", help="Name for chromosome or contig if sequences are samples", action = "store", required = False, default = "contig0")
 parser.add_argument("-N", "--name", help="Name for sample if sequences are contigs", action = "store", required = False, default = "sample0")
 parser.add_argument("-S", "--sequences", help="Sequences to output", action = "store", nargs="+", type=str)
+parser.add_argument("--merge", help="For multi-phylip input, do not increment scaffold numbers", action = "store_true")
 parser.add_argument("-P", "--ploidy", help="Ploidy for joining sequences", action = "store", nargs="+", type=int, default = [1])
 parser.add_argument("--randomPhase", help="Randomize phase for fused sequences", action = "store_true")
 
@@ -93,7 +94,8 @@ else:
     #with multi data there is only one output mode, so we ignore the mode specified.
     genoFile.write("#CHROM\tPOS\t" + "\t".join(seqNames) + "\n")
     for i,seqs in enumerate(_seqs_):
-        for x in xrange(len(seqs[0])): genoFile.write(args.chrom + str(i) + "\t" + str(x+1) + "\t" + "\t".join([s[x] for s in seqs]) + "\n")
+        contigName = args.chrom if args.merge else args.chrom + str(i)
+        for x in xrange(len(seqs[0])): genoFile.write(contigName + "\t" + str(x+1) + "\t" + "\t".join([s[x] for s in seqs]) + "\n")
 
 #############################
 
