@@ -1652,7 +1652,9 @@ class GenoFileReader:
         self.genoFile = genoFile
         self.names = genoFile.readline().split()[2:]
         self.splitPhased=splitPhased
-        if splitPhased: self.names = makeHaploidNames(self.names, self.ploidy)
+        if splitPhased:
+            assert ploidy is not None, "Ploidy must be defined for splitting phased sequences"
+            self.names = makeHaploidNames(self.names, ploidy)
         #add a dictionary for precompiled genotypes, if you want one
         self.precompDict = {}
         self.precompDict["__maxSize__"] = precompMaxSize
@@ -1681,7 +1683,7 @@ class GenoFileReader:
 def parseGenoFile(genoFile, names = None, includePositions = False, splitPhased=False, ploidy=None):
     #file reader
     reader=GenoFileReader(genoFile, splitPhased=splitPhased, ploidy=ploidy)
-    #get names
+    #get names (only needed if we don't want to read all sequences in the file, otherwise we just get them from the file)
     if names and splitPhased: names = makeHaploidNames(names, ploidy)
     if not names: names = reader.names
     #initialise window

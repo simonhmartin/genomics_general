@@ -16,7 +16,8 @@ parser.add_argument("-S", "--samples", help="Name of sample(s)", action = "store
 parser.add_argument("--NtoGap", help="Convert 'N' or 'n' to '-'", action = "store_true")
 parser.add_argument("--seqNameFormat", help="Format for sequence names", action = "store", required = False,
                     choices = ("sample", "contig", "sample_contig", "contig_position", "sample_contig_position"),  default = "sample")
-parser.add_argument("--splitPhased", help="Split phased genotypes into two sequences per sample", action = "store_true")
+parser.add_argument("--splitPhased", help="Split phased genotypes into two (or more, see --ploidy) sequences per sample", action = "store_true")
+parser.add_argument("--ploidy", help="Ploidy for each individual. Only necessary when splitting phased sequences", action = "store", nargs="+", type=int, default = [2])
 parser.add_argument("--separateFiles", help="Output windows or contigs as separate files", action = "store_true")
 parser.add_argument("--gzip", help="gzip output file(s)", action = "store_true")
 
@@ -54,7 +55,7 @@ samples = args.samples.split(",") if args.samples else None
 # if cating all contigs, just parse file and write
 if args.mode == "cat":
     #read file into window like object
-    window = genomics.parseGenoFile(genoFile, names=samples, splitPhased=args.splitPhased)
+    window = genomics.parseGenoFile(genoFile, names=samples, splitPhased=args.splitPhased, ploidy=args.ploidy)
     #write
     seqDict = window.seqDict()
     seqFile.write(genomics.makeAlnString(window.names,[seqDict[name] for name in window.names],outFormat = args.format, NtoGap=args.NtoGap))
@@ -77,8 +78,10 @@ if args.mode == "windows" or args.mode == "contigs":
         minSites = 1
         stepSize = 1e7
     #initialise window generator
-    if windType == "coordinate": windowGenerator = genomics.slidingCoordWindows(genoFile, windSize, stepSize, args.samples, splitPhased=args.splitPhased)
-    else: windowGenerator = genomics.slidingSitesWindows(genoFile, windSize, overlap, maxDist, minSites, args.samples, splitPhased=args.splitPhased)
+    if windType == "coordinate": windowGenerator = genomics.slidingCoordWindows(genoFile, windSize, stepSize,args.samples,
+                                                                                splitPhased=args.splitPhased, ploidy=args.ploidy)
+    else: windowGenerator = genomics.slidingSitesWindows(genoFile, windSize, overlap, maxDist, minSites, args.samples,
+                                                         splitPhased=args.splitPhased, ploidy=args.ploidy)
     
     for window in windowGenerator:
         
