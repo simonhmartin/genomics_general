@@ -62,7 +62,7 @@ if not multi:
 
     #phase if ploidy is not 1
     if max(args.ploidy) > 1:
-        seqs, seqNames = genomics.haploToPhased(seqs, seqNames=seqNames, ploidy = args.ploidy)
+        seqs, seqNames = genomics.haploToPhased(seqs, seqNames=seqNames, ploidy = args.ploidy, randomPhase=args.randomPhase)
 
     ###output
     
@@ -88,7 +88,7 @@ else:
     #phase if ploidy is not 1
     if max(args.ploidy) > 1:
         _seqs_ = [genomics.haploToPhased(seqs, ploidy = args.ploidy) for seqs in _seqs_]
-        seqNames = genomics.makePhasedNames(seqNames, ploidy = args.ploidy)
+        seqNames = genomics.makePhasedNames(seqNames, ploidy = args.ploidy, randomPhase=args.randomPhase)
     
     ###output
     #with multi data there is only one output mode, so we ignore the mode specified.
