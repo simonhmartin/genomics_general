@@ -117,7 +117,10 @@ parser.add_argument("-D", "--maxDist", help="Maximum span distance for sites win
 parser.add_argument("--windCoords", help="Window coordinates file (scaffold start end)", required = False)
 
 parser.add_argument("--samples", help="Samples to include for individual analysis", action = "store", metavar = "sample names")
-parser.add_argument("--haploid", help="Samples that are haploid (comma separated)", action = "store", metavar = "sample names")
+
+parser.add_argument("--ploidy", help="Ploidy for each sample", action = "store", type=int, nargs="+")
+parser.add_argument("--ploidyFile", help="File with samples names and ploidy as columns", action = "store")
+parser.add_argument("--haploid", help="Alternatively just name samples that are haploid (comma separated)", action = "store", metavar = "sample names")
 parser.add_argument("--inferPloidy", help="Ploidy will be inferred in each window (NOT RECOMMENED)", action = "store_true")
 
 parser.add_argument("-g", "--genoFile", help="Input genotypes file", required = False)
@@ -188,13 +191,19 @@ if len(allInds) == 0:
     with gzip.open(args.genoFile, "r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r") as gf:
         allInds = gf.readline().split()[2:]
 
-if args.inferPloidy: ploidyDict = dict(zip(allInds,[None]*len(allInds)))
-elif args.genoFormat == "haplo": ploidyDict = dict(zip(allInds,[1]*len(allInds)))
-else: ploidyDict = dict(zip(allInds,[2]*len(allInds)))
-
-if args.haploid:
-    for sample in args.haploid.split(","):
-        ploidyDict[sample] = 1
+if args.ploidy is not None:
+    ploidy = args.ploidy if len(args.ploidy) != 1 else args.ploidy*len(allInds)
+    assert len(ploidy) == len(allInds), "Incorrect number of ploidy values supplied."
+    ploidyDict = dict(zip(allInds,ploidy))
+elif args.ploidyFile is not None:
+    with open(args.ploidyFile, "r") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
+elif args.inferPloidy:
+    ploidyDict = dict(zip(allInds,[None]*len(allInds)))
+else:
+    if args.genoFormat == "haplo": ploidyDict = dict(zip(allInds,[1]*len(allInds)))
+    else: ploidyDict = dict(zip(allInds,[2]*len(allInds)))
+    if args.haploid:
+        for sample in args.haploid.split(","): ploidyDict[sample] = 1
 
 sampleData = genomics.SampleData(indNames = allInds, ploidyDict = ploidyDict)
 

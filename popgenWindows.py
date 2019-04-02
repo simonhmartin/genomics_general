@@ -103,7 +103,7 @@ def writer(writeQueue, out, writeFailedWindows=False):
     while True:
         resNumber,result,isGood = writeQueue.get()
         if verbose:
-            print >> sys.stderr, "Writer received result", resNumber
+            sys.stderr.write("Writer received result {}\n".format(resNumber))
         if isGood or writeFailedWindows:
             out.write(result + "\n")
             resultsWritten += 1
@@ -132,7 +132,10 @@ parser.add_argument("-p", "--population", help="Pop name and optionally sample n
                     required = False, action='append', nargs="+", metavar=("popName","[samples]"))
 parser.add_argument("--popsFile", help="Optional file of sample names and populations", action = "store", required = False)
 parser.add_argument("--samples", help="Samples to include for individual analysis", action = "store", metavar = "sample names")
-parser.add_argument("--haploid", help="Samples that are haploid (comma separated)", action = "store", metavar = "sample names")
+
+parser.add_argument("--ploidy", help="Ploidy for each sample", action = "store", type=int, nargs="+")
+parser.add_argument("--ploidyFile", help="File with samples names and ploidy as columns", action = "store")
+parser.add_argument("--haploid", help="Alternatively just name samples that are haploid (comma separated)", action = "store", metavar = "sample names")
 parser.add_argument("--inferPloidy", help="Ploidy will be inferred in each window (NOT RECOMMENED)", action = "store_true")
 
 parser.add_argument("--analysis", help="Type of statistics to get", action = "store", nargs = "+",
@@ -234,13 +237,19 @@ if len(popNames) == 0 and ("popFreq" in args.analysis or "popDist" in args.analy
     popNames.append("all")
     popInds.append(allInds)
 
-if args.inferPloidy: ploidyDict = dict(zip(allInds,[None]*len(allInds)))
-elif args.genoFormat == "haplo": ploidyDict = dict(zip(allInds,[1]*len(allInds)))
-else: ploidyDict = dict(zip(allInds,[2]*len(allInds)))
-
-if args.haploid:
-    for sample in args.haploid.split(","):
-        ploidyDict[sample] = 1
+if args.ploidy is not None:
+    ploidy = args.ploidy if len(args.ploidy) != 1 else args.ploidy*len(allInds)
+    assert len(ploidy) == len(allInds), "Incorrect number of ploidy values supplied."
+    ploidyDict = dict(zip(allInds,ploidy))
+elif args.ploidyFile is not None:
+    with open(args.ploidyFile, "r") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
+elif args.inferPloidy:
+    ploidyDict = dict(zip(allInds,[None]*len(allInds)))
+else:
+    if args.genoFormat == "haplo": ploidyDict = dict(zip(allInds,[1]*len(allInds)))
+    else: ploidyDict = dict(zip(allInds,[2]*len(allInds)))
+    if args.haploid:
+        for sample in args.haploid.split(","): ploidyDict[sample] = 1
 
 sampleData = genomics.SampleData(indNames = allInds, popNames = popNames, popInds = popInds, ploidyDict = ploidyDict)
 
@@ -332,7 +341,7 @@ for x in range(threads):
                                                     args.analysis, stats, args.addWindowID,args.roundTo))
     worker.daemon = True
     worker.start()
-    sys.stderr.write("started worker {}".format(x))
+    sys.stderr.write("started worker {}\n".format(x))
 
 
 '''thread for sorting results'''
