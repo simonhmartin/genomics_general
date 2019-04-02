@@ -14,50 +14,80 @@ from time import sleep
 
 #######################################################################################################################
 
-'''A function that reads from the window queue, calls some other function and writes to the results queue
+#function to generate slices of a file. N is the sizehint, in bytes I guess, so 1M typically translates fto a few thosand lines
+def fileSlicer(f, N=1000000):
+    while True:
+        fileSlice = f.readlines(N)
+        if len(fileSlice) != 0: yield fileSlice
+        else: break
+
+
+'''A function that reads from the input queue, calls some other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using. This is the function that will run on each of the N cores.'''
-def freqs_wrapper(windowQueue, resultQueue, genoFormat, sampleData, minData, target, asCounts, keepNanLines = False):
+def freqs_wrapper(inQueue, resultQueue, headerLine, genoFormat, sampleData, minData, target, asCounts, keepNanLines = False):
     while True:
         
-        windowNumber,window = windowQueue.get() # retrieve window
+        sliceNumber,fileSlice = inQueue.get() # retrieve slice
         
+        if sliceNumber == -1:
+            resultQueue.put((-1,None,)) # this is the way of telling everything we're done
+            break
+
+        
+        window = genomics.parseGenoFile(fileSlice, headerLine, names=sampleData.indNames)
+                
         #make alignment objects
         aln = genomics.genoToAlignment(window.seqDict(), sampleData, genoFormat = genoFormat)
         popAlns = dict(zip(sampleData.popNames, [aln.subset(groups=[pop]) for pop in sampleData.popNames]))
         
-        #target base at each site
+        #if there is no target, fetch all base counts
         
-        if target == "derived":
-            #use last pop as outgroup
-            outgroup = sampleData.popNames[-1]
-            inAln = aln.subset(groups = sampleData.popNames[:-1])
-            baseColumns = np.array([genomics.derivedAllele(inAln.numArray[:,i][inAln.nanMask[:,i]],
-                                                           popAlns[outgroup].numArray[:,i][popAlns[outgroup].nanMask[:,i]],
-                                                           numeric=True)
-                                    for i in xrange(aln.l)]).reshape([aln.l,1])
+        if not target:
+            goodSites = np.apply_along_axis(lambda(x): ~np.any(np.isnan(x)),1,baseColumns)
+            popFreqs = []
+            for pop in sampleData.popNames:
+                goodData = popAlns[pop].siteNonNan() >= minData
+                sites = np.where(goodSites & goodData)[0]
+                baseFreqs = popAlns[pop].siteFreqs(sites, asCounts=asCounts)
+                popFreqs.append([",".join(row) for row in baseFreqs.astype(str)])
             
+            allFreqs = np.vstack(popFreqs)
+        
         else:
-            #otherwise get minor allele.
-                        
-            baseColumns = np.array([genomics.minorAllele(aln.numArray[:,i][aln.nanMask[:,i]]) for i in xrange(aln.l)]).reshape([aln.l,1])
+            #otherwise define the target base at each site
+            if target == "derived":
+                #use last pop as outgroup
+                outgroup = sampleData.popNames[-1]
+                inAln = aln.subset(groups = sampleData.popNames[:-1])
+                baseColumns = np.array([genomics.derivedAllele(inAln.numArray[:,i][inAln.nanMask[:,i]],
+                                                            popAlns[outgroup].numArray[:,i][popAlns[outgroup].nanMask[:,i]],
+                                                            numeric=True)
+                                        for i in xrange(aln.l)]).reshape([aln.l,1])
+                
+            else:
+                #otherwise get minor allele.
+                baseColumns = np.array([genomics.minorAllele(aln.numArray[:,i][aln.nanMask[:,i]]) for i in xrange(aln.l)]).reshape([aln.l,1])
+            
+            goodSites = np.apply_along_axis(lambda(x): ~np.any(np.isnan(x)),1,baseColumns)
+            
+            #get freqs per pop
+            popFreqs = []
+            for pop in sampleData.popNames:
+                #first find sites with sufficient data
+                goodData = popAlns[pop].siteNonNan() >= minData
+                sites = np.where(goodSites & goodData)[0]
+                baseFreqs = popAlns[pop].siteFreqs(sites, asCounts=asCounts)
+                popColumns = baseColumns[sites,:].astype(int)
+                popRows = np.repeat(np.arange(len(sites))[:,np.newaxis],popColumns.shape[1], axis = 1)
+                targetFreqs =  np.zeros([aln.l, popColumns.shape[1]], dtype=int if asCounts else float)
+                if not asCounts: targetFreqs.fill(np.nan)
+                if len(sites) >= 1: targetFreqs[sites,:] = baseFreqs[popRows,popColumns]
+                popFreqs.append(np.around(targetFreqs, 4))
+            
+            allFreqs = np.hstack(popFreqs)
         
-        goodSites = np.apply_along_axis(lambda(x): ~np.any(np.isnan(x)),1,baseColumns)
-        
-        #get freqs per pop
-        popFreqs = []
-        for pop in sampleData.popNames:
-            #first find sites with sufficient data
-            goodData = popAlns[pop].siteNonNan() >= minData
-            sites = np.where(goodSites & goodData)[0]
-            baseFreqs = popAlns[pop].siteFreqs(sites, asCounts=asCounts)
-            popColumns = baseColumns[sites,:].astype(int)
-            popRows = np.repeat(np.arange(len(sites))[:,np.newaxis],popColumns.shape[1], axis = 1)
-            targetFreqs =  np.zeros([aln.l, popColumns.shape[1]], dtype=int if asCounts else float)
-            if not asCounts: targetFreqs.fill(np.nan)
-            if len(sites) >= 1: targetFreqs[sites,:] = baseFreqs[popRows,popColumns]
-            popFreqs.append(np.around(targetFreqs, 4))
-        
-        allFreqs = np.hstack(popFreqs)
+        #fetch scaffold and position
+        scafPos = np.array([line.split(None, 2)[:2] for line in fileSlice], dtype="str")
         
         if not keepNanLines:
             if not asCounts:
@@ -65,29 +95,34 @@ def freqs_wrapper(windowQueue, resultQueue, genoFormat, sampleData, minData, tar
             else: outSites = np.where(~np.apply_along_axis(np.all, 1, allFreqs==0))[0]
         else: outSites = range(aln.l)
                 
-        outArray = np.column_stack(([window.scaffold]*len(outSites),
-                                    np.array(window.positions)[outSites].astype(str),
+        outArray = np.column_stack((scafPos[outSites,:],
                                     allFreqs[outSites,:].astype(str),))
         
         resultStrings = ["\t".join(row) for row in outArray]
         
-        resultQueue.put((windowNumber, resultStrings,))
+        resultQueue.put((sliceNumber, resultStrings,))
 
 
 '''a function that watches the result queue and sorts results. This should be a generic funcion regardless of the result, as long as the first object is the line number, and this increases consecutively.'''
-def sorter(doneQueue, writeQueue, verbose):
+def sorter(doneQueue, writeQueue, verbose, nWorkerThreads):
     global resultsReceived
     sortBuffer = {}
     expect = 0
+    threadsComplete = 0 #this will keep track of the worker threads and once they're all done this thread will break
     while True:
-        windowNumber, results = doneQueue.get()
+        sliceNumber, results = doneQueue.get()
+        #check if we're done
+        if sliceNumber == -1: threadsComplete += 1
+        if threadsComplete == nWorkerThreads:
+            writeQueue.put((-1,None,))
+            break #this is the way of telling everything we're done
         resultsReceived += 1
         if verbose:
-            print >> sys.stderr, "Sorter received window", windowNumber
-        if windowNumber == expect:
-            writeQueue.put((windowNumber,results))
+            print >> sys.stderr, "Sorter received slice", sliceNumber
+        if sliceNumber == expect:
+            writeQueue.put((sliceNumber,results))
             if verbose:
-                print >> sys.stderr, "Block", windowNumber, "sent to writer"
+                print >> sys.stderr, "Block", sliceNumber, "sent to writer"
             expect +=1
             #now check buffer for further results
             while True:
@@ -101,7 +136,7 @@ def sorter(doneQueue, writeQueue, verbose):
                     break
         else:
             #otherwise this line is ahead of us, so add to buffer dictionary
-            sortBuffer[str(windowNumber)] = results
+            sortBuffer[str(sliceNumber)] = results
 
 
 
@@ -110,9 +145,11 @@ def writer(writeQueue, out, verbose):
     global resultsWritten
     global linesWritten
     while True:
-        windowNumber, results = writeQueue.get()
+        sliceNumber, results = writeQueue.get()
+        #check if we're done
+        if sliceNumber == -1: break
         if verbose:
-            print >> sys.stderr, "\nWriter received window", windowNumber
+            print >> sys.stderr, "\nWriter received slice", sliceNumber
         for outLine in results:
             out.write(outLine + "\n")
             linesWritten += 1
@@ -122,7 +159,7 @@ def writer(writeQueue, out, verbose):
 def checkStats():
     while True:
         sleep(10)
-        print >> sys.stderr, windowsQueued, "windows queued | ", resultsReceived, "windows analysed | ", resultsWritten, "windows written |", linesWritten, "lines written"
+        print >> sys.stderr, slicesQueued, "slices queued | ", resultsReceived, "slices analysed | ", resultsWritten, "slices written |", linesWritten, "lines written"
 
 def lineReader(fileObj):
     line = fileObj.readline()
@@ -147,7 +184,7 @@ parser.add_argument("--popsFile", help="Optional file of sample names and popula
 
 #Frequency for all bases or a single base
 parser.add_argument("--target", help="All or single base frequency (derived assumes last pop is outgroup)", choices = ("minor","derived"),
-                    action = "store", default="minor")
+                    action = "store", default=None)
 
 parser.add_argument("--asCounts", help="Return drwquencies as counts", action='store_true')
 
@@ -158,18 +195,13 @@ parser.add_argument("--ploidyFile", help="File with samples names and ploidy as 
 #optional missing data argument
 parser.add_argument("--minData", help="Minimum proportion of non-missing data per population", type=float, action = "store", default = 0.1, metavar = "proportion")
 
-#contigs
-parser.add_argument("--include", help="File of contigs (one per line)", action='store')
-parser.add_argument("--exclude", help="File of contigs (one per line)", action='store')
-
 parser.add_argument("--keepNanLines", help="Output lines with no information", action='store_true')
 
 
 #other
 parser.add_argument("-t", "--threads", help="Analysis threads", type=int, action = "store", default = 1)
 parser.add_argument("--verbose", help="Verbose output.", action = "store_true")
-parser.add_argument("--windSize", help="Size of windows to process in each thread", type=int, action = "store", default = 10000)
-parser.add_argument("--test", help="Test - runs 10 windows", action='store_true')
+parser.add_argument("--test", help="Test - runs 10 slices", action='store_true')
 
 
 args = parser.parse_args()
@@ -206,21 +238,6 @@ sampleData = genomics.SampleData(popNames = popNames, popInds = popInds, ploidyD
 
 ############################################################################################################################################
 
-#scafs to exclude
-
-if args.exclude:
-    with open(args.exclude, "r") as excludeFile:
-        scafsToExclude = [line.rstrip() for line in excludeFile]
-    print >> sys.stderr, len(scafsToExclude), "scaffolds will be excluded."
-else: scafsToExclude = None
-
-if args.include:
-    with open(args.include, "r") as includeFile:
-        scafsToInclude = [line.rstrip() for line in includeFile]
-    print >> sys.stderr, len(scafsToInclude), "scaffolds will be analysed."
-else: scafsToInclude = None
-
-
 #open files
 
 if args.genoFile:
@@ -228,6 +245,7 @@ if args.genoFile:
     else: genoFile = open(args.genoFile, "r")
 else: genoFile = sys.stdin
 
+headerLine= genoFile.readline()
 
 if args.outFile:
     if args.outFile[-3:] == ".gz": outFile = gzip.open(args.outFile, "w")
@@ -240,13 +258,13 @@ outFile.write("\t".join(popNames) + "\n")
 ##########################################################################################################################
 
 #counting stat that will let keep track of how far we are
-windowsQueued = 0
+slicesQueued = 0
 resultsReceived = 0
 resultsWritten = 0
 linesWritten = 0
 
 '''Create queues to hold the data one will hold the line info to be passed to the analysis'''
-windowQueue = SimpleQueue()
+inQueue = SimpleQueue()
 #one will hold the results (in the order they come)
 resultQueue = SimpleQueue()
 #one will hold the sorted results to be written
@@ -256,61 +274,65 @@ writeQueue = SimpleQueue()
 '''start worker Processes for analysis. The command should be tailored for the analysis wrapper function
 of course these will only start doing anything after we put data into the line queue
 the function we call is actually a wrapper for another function.(s) This one reads from the line queue, passes to some analysis function(s), gets the results and sends to the result queue'''
+workerThreads = []
+sys.stderr.write("\nStarting {} worker threads\n".format(args.threads))
 for x in range(args.threads):
-  worker = Process(target=freqs_wrapper, args = (windowQueue, resultQueue, args.genoFormat, sampleData,
+  workerThread = Process(target=freqs_wrapper, args = (inQueue, resultQueue, headerLine, args.genoFormat, sampleData,
                                                  args.minData, args.target, args.asCounts, args.keepNanLines,))
-  worker.daemon = True
-  worker.start()
-  print >> sys.stderr, "started worker", x
+  workerThread.daemon = True
+  workerThread.start()
+  workerThreads.append(workerThread)
 
 
 '''thread for sorting results'''
-worker = Thread(target=sorter, args=(resultQueue,writeQueue,args.verbose,))
-worker.daemon = True
-worker.start()
+sorterThread = Thread(target=sorter, args=(resultQueue,writeQueue,args.verbose, args.threads,))
+sorterThread.daemon = True
+sorterThread.start()
 
 '''start thread for writing the results'''
-worker = Thread(target=writer, args=(writeQueue, outFile, args.verbose,))
-worker.daemon = True
-worker.start()
+writerThread = Thread(target=writer, args=(writeQueue, outFile, args.verbose,))
+writerThread.daemon = True
+writerThread.start()
 
 '''start background Thread that will run a loop to check run statistics and print
 We use thread, because I think this is necessary for a process that watches global variables like linesTested'''
-worker = Thread(target=checkStats)
-worker.daemon = True
-worker.start()
+checkerThread = Thread(target=checkStats)
+checkerThread.daemon = True
+checkerThread.start()
 
 ########################################################################################################################
 
-#generate windows and queue
-
-windowGenerator = genomics.nonOverlappingSitesWindows(genoFile, args.windSize,names=sampleData.indNames,
-                                                      include = scafsToInclude,exclude = scafsToExclude)
-
+#generate slices and queue
+fileSlices = fileSlicer(genoFile, 1000000)
 
 if not args.test:
-    for window in windowGenerator:
-        windowQueue.put((windowsQueued,window))
-        windowsQueued += 1
+    for fileSlice in fileSlices:
+        inQueue.put((slicesQueued,fileSlice))
+        slicesQueued += 1
 else:
-    for window in windowGenerator:
-        windowQueue.put((windowsQueued,window))
-        windowsQueued += 1
-        if windowsQueued == 10: break
+    for fileSlice in fileSlices:
+        inQueue.put((slicesQueued,fileSlice))
+        slicesQueued += 1
+        if slicesQueued == 10: break
 
 
 ############################################################################################################################################
 
-print >> sys.stderr, "\nWriting final results...\n"
-while resultsWritten < windowsQueued:
-  sleep(1)
+#Now we send completion signals to all worker threads
+for x in range(args.threads):
+    inQueue.put((-1,None,)) # -1 tells the threads to break
 
-sleep(5)
+sys.stderr.write("\nClosing worker threads\n".format(args.threads))
+for x in range(len(workerThreads)):
+    workerThreads[x].join()
+
+sorterThread.join()
+writerThread.join()
+
+sys.stderr.write("\nDone\n")
 
 genoFile.close()
 outFile.close()
-
-print >> sys.stderr, "\nDone."
 
 sys.exit()
 
