@@ -130,6 +130,8 @@ def makeList(thing):
 
 
 class Genotype:
+    __slots__ = ['geno', 'genoFormat', 'ploidy', 'forcePloidy', 'alleles', 'phase', 'numAlleles']
+    
     def __init__(self, geno, genoFormat, ploidy = None, forcePloidy=False):
         if genoFormat == "phased":
             self.alleles = list(geno)[::2]
@@ -670,6 +672,8 @@ def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAllel
 
 
 class Alignment:
+    __slots__ = ['sequences' 'names' 'groups' 'groupIndDict' 'length' 'numArray' 'positions' 'sampleNames']
+    
     def __init__(self, sequences = None, names=None, groups = None, groupIndDict=None, length = None, numArray = None, positions=None, sampleNames=None):
         assert not sequences is numArray is length is None, "Specify sequences or length of empty sequence object."
         if sequences is not None:
@@ -1468,6 +1472,8 @@ def popSiteFreqs(aln, minData = 0):
 
 
 class GenoWindow:
+    __slots__ = ['scaffold', 'limits','sites', 'names', 'positions', 'ID']
+    
     def __init__(self, scaffold = None, limits=[-np.inf,np.inf],sites = None, names = None, positions = None, ID = None):
         if sites is not None and positions is not None:
             if not len(sites) == len(positions) == 0:
@@ -1628,10 +1634,8 @@ class GenoWindow:
         #try: return int(round(sum(self.positions)/len(self.positions)))
         #except: return np.NaN
 
-from time import sleep
-
-def parseGenoLine(line,names,splitPhased=False, precompDict=None, addToPrecomp=True):
-    if not line == "":
+def parseGenoLine(line,names, type=str, splitPhased=False, precompDict=None, addToPrecomp=True):
+    if line and line != "":
         x,y,z = line.split(None,2)
         #check if there is a precompiled genotype dictionary, and if so, check for the line in there
         if precompDict and z in precompDict:
@@ -1639,18 +1643,29 @@ def parseGenoLine(line,names,splitPhased=False, precompDict=None, addToPrecomp=T
         else:
             GTs = z.split()
             if splitPhased: GTs = [a for GT in GTs for a in re.split('/|\|', GT)]
+            if type!=str: GTs = [float(GT) if type==float else int(GT) for GT in GTs]
             GTdict = dict(zip(names,GTs))
             if (precompDict != None) and addToPrecomp:
                 precompDict[z] = GTdict
+                precompDict["__counter__"] += 1
         return {"scaffold": x, "position": int(y), "GTs": GTdict}
     else:
         return {"scaffold": None, "position": None, "GTs": None}
 
 
+
+#a little function to get the next from a generator while first checking pythoin version
+#will be redundant when completely ported to python 3
+
+def getNext(generator):
+    return generator.next() if sys.version_info.major < 3 else next(generator)
+
 class GenoFileReader:
-    def __init__(self,genoFile, splitPhased = False, ploidy=None, precomp=False, precompMaxSize=10):
+    def __init__(self,genoFile, headerLine=None, type=str, splitPhased = False, ploidy=None, precomp=True, precompMaxSize=10000):
         self.genoFile = genoFile
-        self.names = genoFile.readline().split()[2:]
+        if not headerLine: headerLine = getNext(genoFile)
+        self.names = headerLine.split()[2:]
+        self.type = type
         self.splitPhased=splitPhased
         if splitPhased:
             assert ploidy is not None, "Ploidy must be defined for splitting phased sequences"
@@ -1660,29 +1675,33 @@ class GenoFileReader:
         self.precompDict["__maxSize__"] = precompMaxSize
         self.precompDict["__counter__"] = 0
     
+    #def siteBySite(self):
+        #for line in self.genoFile:
+            #yield parseGenoLine(line, self.names, self.splitPhased)
+    
+    #def nextSite(self):
+        #try: line = self.genoFile.next()
+        #except: line = None
+        #return parseGenoLine(line, self.names, self.splitPhased)
+    
+    #Functions above replaced Feb2019 with these that incorporate a dict of precompiled lines.
+    #Improve speed only when there are lots of invariant sites
     def siteBySite(self):
         for line in self.genoFile:
-            yield parseGenoLine(line, self.names, self.splitPhased)
-    
-    def nextSite(self):
-        return parseGenoLine(self.genoFile.readline(), self.names, self.splitPhased)
-    
-    #here are equivalent reader functions that incorporate a dict of precompiled lines.
-    #Not default because it's not clear that this is any faster
-    def siteBySite_withPrecomp(self):
-        for line in self.genoFile:
-            yield parseGenoLine(line, self.names, self.splitPhased,
+            yield parseGenoLine(line, self.names, self.type, self.splitPhased,
                                 self.precompDict, addToPrecomp=self.precompDict["__counter__"]<self.precompDict["__maxSize__"])
     
-    def nextSite_withPrecomp(self):
-        return parseGenoLine(self.genoFile.readline(), self.names, self.splitPhased,
-                             self.precompDict, addToPrecomp=self.precompDict["__counter__"]<self.precompDict["__maxSize__"])
+    def nextSite(self):
+        try: line = getNext(self.genoFile)
+        except: line = None
+        return parseGenoLine(line, self.names, self.type, self.splitPhased,
+                            self.precompDict, addToPrecomp=self.precompDict["__counter__"]<self.precompDict["__maxSize__"])
 
 
 #function to read entire genoFile into a window-like object
-def parseGenoFile(genoFile, names = None, includePositions = False, splitPhased=False, ploidy=None):
+def parseGenoFile(genoFile, headerLine=None, names = None, includePositions = False, splitPhased=False, ploidy=None):
     #file reader
-    reader=GenoFileReader(genoFile, splitPhased=splitPhased, ploidy=ploidy)
+    reader=GenoFileReader(genoFile, headerLine, splitPhased=splitPhased, ploidy=ploidy)
     #get names (only needed if we don't want to read all sequences in the file, otherwise we just get them from the file)
     if names and splitPhased: names = makeHaploidNames(names, ploidy)
     if not names: names = reader.names
