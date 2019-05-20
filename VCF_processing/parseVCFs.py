@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
 import argparse, gzip, sys
+import numpy as np
 import parseVCF
+import tabix
 
 from multiprocessing import Process, Queue
 from multiprocessing.queues import SimpleQueue
@@ -11,9 +13,19 @@ from time import sleep
 
 ##################################################
 
+#def tabixStream(fileName, chrom, start, end):
+    #region = chrom+":"+str(start)+"-"+str(end)  
+    #return subprocess.Popen(['tabix',fileName, region], stdout=subprocess.PIPE, bufsize=1)
+
+#using pytabix 
+def tabixStream(fileName, chrom, start, end):
+    tb = tabix.open(fileName)
+    return tb.query(chrom, start, end)
+
 def parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, skipIndels, missing, ploidy, outSep, verbose):
     n = len(fileNames)
-    sitesGenerators = [parseVCF.tabixSites(fileNames[x], scaffold, start, end, headData[x].mainHead) for x in range(n)]
+    
+    sitesGenerators = [parseVCF.parseVcfSites(tabixStream(fileNames[x], scaffold, start, end), headData[x]["mainHeaders"]) for x in range(n)]
     
     currentSites = []
     for x in range(n):
@@ -37,12 +49,12 @@ def parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, 
                 if not skipIndels or currentSites[x].getType() is not "indel":
                     genotypes = currentSites[x].getGenotypes(gtFilters,asList=True,withPhase=True,missing=missing,allowOnly="ACGT",keepPartial=False)
                     filesRepresented += 1
-                else: genotypes = ["/".join([missing]*ploidy)]*(len(headData[x].sampleNames))
+                else: genotypes = ["/".join([missing]*ploidy)]*headData[x]["nSamples"]
                 try: currentSites[x] = sitesGenerators[x].next()
                 except: currentSites[x] = None
             else:
                 #if not a match, add Ns for this file, and dont read next line
-                genotypes = ["/".join([missing]*ploidy)]*(len(headData[x].sampleNames))
+                genotypes = ["/".join([missing]*ploidy)]*headData[x]["nSamples"]
             outObjects += genotypes
         #so now we've created the output, but need to decide if we can write it
         if method == "all" or (method == "union" and filesRepresented >= 1) or (method == "intersect" and filesRepresented == n):
@@ -54,25 +66,37 @@ def parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, 
 
 def parseAndMergeWrapper(inQueue, outQueue, fileNames, headData, gtFilters, method, skipIndels, missing, ploidy, outSep, verbose):
     while True:
+        
         windowNumber,scaffold,start,end = inQueue.get() # retrieve window data
+        
+        if windowNumber == -1:
+            outQueue.put((-1,None,)) # this is the way of telling everything we're done
+            break
+        
         parsedLines = parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, skipIndels, missing, ploidy, outSep, verbose)
         outQueue.put((windowNumber, parsedLines,))
 
 
 '''a function that watches the result queue and sorts results. This should be a generic funcion regardless of the result, as long as the first object is the line number, and this increases consecutively.'''
-def sorter(doneQueue, writeQueue, verbose):
+def sorter(doneQueue, writeQueue, nWorkerThreads, verbose):
     global resultsReceived
+    threadsComplete = 0 #this will keep track of the worker threads and once they're all done this thread will break
     sortBuffer = {}
     expect = 0
     while True:
         windowNumber, results = doneQueue.get()
+        #check if we're finished
+        if windowNumber == -1: threadsComplete += 1
+        #once all threads report they are done, tel the writer we're done
+        if threadsComplete == nWorkerThreads:
+            writeQueue.put((-1,None,))
+            break #this is the way of telling everything we're done
+        
         resultsReceived += 1
-        if verbose:
-            print >> sys.stderr, "Sorter received window", windowNumber
         if windowNumber == expect:
             writeQueue.put((windowNumber,results))
             if verbose:
-                print >> sys.stderr, "Window", windowNumber, "sent to writer"
+                sys.stderr.write("Window {} sent to writer\n".format(windowNumber))
             expect +=1
             #now check buffer for further results
             while True:
@@ -80,7 +104,7 @@ def sorter(doneQueue, writeQueue, verbose):
                     results = sortBuffer.pop(str(expect))
                     writeQueue.put((expect,results))
                     if verbose:
-                        print >> sys.stderr, "Window", expect, "sent to writer"
+                        sys.stderr.write("Window {} sent to writer\n".format(expect))
                     expect +=1
                 except:
                     break
@@ -89,15 +113,15 @@ def sorter(doneQueue, writeQueue, verbose):
             sortBuffer[str(windowNumber)] = results
 
 
-
 '''a writer function that writes the sorted result. This is also generic'''
 def writer(writeQueue, out, verbose):
     global resultsWritten
     global linesWritten
     while True:
         windowNumber, results = writeQueue.get()
+        if windowNumber == -1: break # this is the signal from the sorter that we're done
         if verbose:
-            print >> sys.stderr, "\nWriter received window", windowNumber
+            sys.stderr.write("\nWriting window {}\n".format(windowNumber))
         for outLine in results:
             out.write(outLine)
             linesWritten += 1
@@ -108,14 +132,17 @@ def writer(writeQueue, out, verbose):
 def checkStats():
     while True:
         sleep(10)
-        print >> sys.stderr, windowsQueued, "windows queued | ", resultsReceived, "windows parsed | ", resultsWritten, "windows written |", linesWritten, "lines written"
+        sys.stderr.write("{} windows queued | {} windows parsed | {} windows written | {} lines written\n".format(windowsQueued,
+                                                                                                                resultsReceived,
+                                                                                                                resultsWritten,
+                                                                                                                linesWritten))
 
 ################################################################################################################
 ### parse arguments
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-i", "--infile", help="Input vcf file", action = "append", required = True)
-parser.add_argument("-o", "--outfile", help="Output csv file", action = "store")
+parser.add_argument("-i", "--inFile", help="Input vcf file", action = "append", required = True)
+parser.add_argument("-o", "--outFile", help="Output csv file", action = "store")
 parser.add_argument("-f", "--fai", help="Fasta index file", action = "store")
 parser.add_argument("-M", "--method", help="How to merge", action = "store", choices = ("all","intersect","union"), default = "union")
 
@@ -137,11 +164,9 @@ parser.add_argument("--gtf", help="Genotype filter. Syntax: flag=X min=X max=X s
 parser.add_argument("--skipIndels", help="Skip indels", action = "store_true")
 parser.add_argument("--missing", help="Value to use for missing data", action = "store", default = "N")
 parser.add_argument("--ploidy", help="Ploidy for missing data", action = "store", type = int, default = 2)
+parser.add_argument("--outSep", help="Output separator", action = "store", default = "\t")
 
 args = parser.parse_args()
-
-infiles = args.infile
-outfile = args.outfile
 
 include = []
 exclude = []
@@ -159,11 +184,11 @@ if args.excludeFile:
 
 if len(include) >= 1:
     include = set(include)
-    print >> sys.stderr, len(include), "contigs will be included."
-    
+    sys.stderr.write("{} contigs will be included.".format(len(include)))
+
 if len(exclude) >= 1:
     exclude = set(exclude)
-    print >> sys.stderr, len(exclude), "contigs will be excluded."
+    sys.stderr.write("{} contigs will be excluded.".format(len(exclude)))
 
 gtFilters = []
 if args.gtf:
@@ -172,18 +197,14 @@ if args.gtf:
             gtfDict = dict([tuple(i.split("=")) for i in gtf])
             for key in gtfDict.keys():
                 assert key in ["flag","min","max", "siteTypes", "gtTypes", "samples"]
-            for x in ["siteTypes", "gtTypes", "samples"]:
-                if x in gtfDict.keys(): gtfDict[x] = gtfDict[x].split(",")
-                else: gtfDict[x] = None
-            for x in ["min", "max"]:
-                if x not in gtfDict.keys(): gtfDict[x] = None
-            gtFilters.append(parseVCF.gtFilter(gtfDict["flag"], gtfDict["min"], gtfDict["max"], gtfDict["samples"], gtfDict["siteTypes"], gtfDict["gtTypes"]))
+            for key in ["siteTypes", "gtTypes", "samples"]:
+                if key in gtfDict: gtfDict[key] = gtfDict[key].split(",")
+            gtfDict["min"] = float(gtfDict["min"]) if "min" in gtfDict else -np.inf
+            gtfDict["max"] = float(gtfDict["max"]) if "max" in gtfDict else np.inf
+            gtFilters.append(gtfDict)
         except:
-            print >> sys.stderr, "Bad genotype filter specification. See help."  
-            raise
-
-
-outSep = " " if args.space else "\t"
+            raise ValueError("Bad genotype filter specification. See help.")
+ 
 
 verbose = args.verbose
 ##########################################################################################################################
@@ -191,11 +212,11 @@ verbose = args.verbose
 ###########################################################################################################################
 ### open files
 
-headData = [parseVCF.getHeadData(f) for f in infiles]
-samples = [s for ss in [h.sampleNames for h in headData] for s in ss]
+headData = [parseVCF.getHeadData(f) for f in args.inFile]
+samples = [s for ss in [h["sampleNames"] for h in headData] for s in ss]
 
-if outfile: out = gzip.open(outfile, "w") if outfile.endswith(".gz") else open(outfile, "w")
-else: out = sys.stdout
+if args.outFile: outFile = gzip.open(args.outFile, "w") if args.outFile.endswith(".gz") else open(args.outFile, "w")
+else: outFile = sys.stdout
 
 ###parse fai file
 
@@ -205,8 +226,8 @@ if args.fai:
     scafLens = dict(scafLens)
 
 if not args.fai:
-    scafs = headData[0].contigs
-    scafLens = headData[0].contigLengths
+    scafs = headData[0]["contigs"]
+    scafLens = headData[0]["contigLengths"]
 
 ##########################################################################################################
 
@@ -229,32 +250,35 @@ writeQueue = SimpleQueue()
 of course these will only start doing anything after we put data into the line queue
 the function we call is actually a wrapper for another function.(s)
 This one reads from the pod queue, passes each line some analysis function(s), gets the results and sends to the result queue'''
+workerThreads = []
+sys.stderr.write("\nStarting {} worker threads\n".format(args.threads))
 for x in range(args.threads):
-    worker = Process(target=parseAndMergeWrapper,args=(inQueue, outQueue, infiles, headData, gtFilters, args.method,
-                                                       args.skipIndels, args.missing, args.ploidy, outSep, verbose,))
-    worker.daemon = True
-    worker.start()
+    workerThread = Process(target=parseAndMergeWrapper,args=(inQueue, outQueue, args.inFile, headData, gtFilters, args.method,
+                                                       args.skipIndels, args.missing, args.ploidy, args.outSep, verbose,))
+    workerThread.daemon = True
+    workerThread.start()
+    workerThreads.append(workerThread)
 
 '''start two threads for sorting and writing the results'''
-worker = Thread(target=sorter, args=(outQueue,writeQueue,verbose,))
-worker.daemon = True
-worker.start()
+sorterThread = Thread(target=sorter, args=(outQueue, writeQueue, args.threads, verbose,))
+sorterThread.daemon = True
+sorterThread.start()
 
 '''start one Process for sorting and writing the results'''
-worker = Thread(target=writer, args=(writeQueue,out,verbose,))
-worker.daemon = True
-worker.start()
+writerThread = Thread(target=writer, args=(writeQueue, outFile, verbose,))
+writerThread.daemon = True
+writerThread.start()
 
 
 '''start background Thread that will run a loop to check run statistics and print
 We use thread, because I think this is necessary for a process that watches global variables like linesTested'''
-worker = Thread(target=checkStats)
-worker.daemon = True
-worker.start()
+checkerThread = Thread(target=checkStats)
+checkerThread.daemon = True
+checkerThread.start()
 
 ##########################################################################################################################
 
-out.write(outSep.join(["#CHROM", "POS"] + samples) + "\n")
+outFile.write(args.outSep.join(["#CHROM", "POS"] + samples) + "\n")
 
 '''now we go through assuming all files are ordered as in the fai.
 if we don't find the line we're looking for we move on to the next'''
@@ -267,15 +291,24 @@ for scaf in scafs:
         inQueue.put((windowsQueued,scaf,starts[x],ends[x],))
         windowsQueued += 1
         if args.test and windowsQueued == 10: break
+    if args.test and windowsQueued == 10: break
 
 
-while resultsWritten < windowsQueued:
-  sleep(1)
+############################################################################################################################################
 
-sleep(5)
+#Now we send completion signals to all worker threads
+for x in range(args.threads):
+    inQueue.put((-1,None,None,None,)) # -1 tells the threads to break
 
-out.close()
+#and wait for all to finish
+for x in range(len(workerThreads)):
+    workerThreads[x].join()
 
-print >> sys.stderr, "\nDone."
+sorterThread.join()
+writerThread.join()
 
-out.close()
+sys.stderr.write("\nDone\n")
+
+outFile.close()
+
+sys.exit()
