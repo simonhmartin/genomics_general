@@ -7,38 +7,6 @@ import sys
 import argparse
 import genomics
 
-def parseRegionText(regionText):
-    splitText = regionText.split(":")
-    seqName = splitText[0]
-    if len(splitText) < 3 or splitText[2] == "": ori = "+"
-    else: ori = splitText[2]
-    if ori not in "+-": raise ValueError("Orientation must be + or -")
-    try:
-        fromTo = [int(x) for x in splitText[1].split("-")]
-        if len(fromTo) == 1: fromTo.append(None)
-        if fromTo[1] != None and fromTo[0] > fromTo[1]:
-            fromTo = fromTo[::-1]
-            ori = "-"
-        return (seqName,fromTo[0],fromTo[1],ori,)
-    except: return (seqName,None,None,ori,)
-
-
-def parseRegionList(regionList):
-    seqName = regionList[0]
-    if len(regionList) < 4: ori = "+"
-    else: ori = regionList[3]
-    if ori not in "+-": raise ValueError("Orientation must be + or -")
-    try:
-        fromTo = [int(x) for x in regionList[1:3]]
-        if len(fromTo) == 1: fromTo.append(None)
-        if fromTo[1] != None and fromTo[0] > fromTo[1]:
-            fromTo = fromTo[::-1]
-            ori = "-"
-        return (seqName,fromTo[0],fromTo[1],ori,)
-    except: return (seqName,None,None,ori,)
-
-
-
 parser = argparse.ArgumentParser()
 parser.add_argument("-p", "--phylipIn", help="Input is phylip format", action = "store_true")
 parser.add_argument("-P", "--phylipOut", help="Output is phylip format", action = "store_true")
@@ -81,11 +49,11 @@ else: names, seqs = genomics.parsePhylip(allText)
 
 if args.truncateNames: names = [name.split()[0] for name in names]
 
-regions = [parseRegionText(r) for r in args.regions] if args.regions else []
+regions = [genomics.parseRegionText(r) for r in args.regions] if args.regions else []
 
 if args.regionsFile:
         with open(args.regionsFile, "r") as rf:
-            for line in rf: regions.append(parseRegionList(line.split()))
+            for line in rf: regions.append(genomics.parseRegionList(line.split()))
 
 #only filter and chop sequences if necessary
 if len(regions) >= 1:
