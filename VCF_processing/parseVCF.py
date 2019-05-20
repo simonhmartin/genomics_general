@@ -5,33 +5,24 @@
 
 import argparse, sys, gzip, re, subprocess
 
-class vcfGenoData:
-    
-    def __init__(self, formatList, genoList):
-        genoInfoNames = formatList
-        genoInfo = genoList
-        for x in range(len(genoInfo)):
-            setattr(self, genoInfoNames[x], genoInfo[x])
-        if hasattr(self,"GT"):
-            self.phase = "|" if "|" in self.GT else "/"
-            try: self.alleles = re.split('\||/',self.GT)
-            except: raise ValueError, "Error parsing genotype:" + str(self.GT)
-    
-    def getType(self):
-        if not hasattr(self,"GT"): return None
-        elif len(self.alleles) == 1: return "Haploid"
-        elif self.alleles[0] == self.alleles[1] == "0": return "HomRef"
-        elif self.alleles[0] != self.alleles[1]: return "Het"
-        elif self.alleles[0] == self.alleles[1] != ".": return "HomAlt"
-        else: return "Missing"
+import numpy as np
+
+def GTtype(alleles):
+    alleleSet = set(alleles)
+    if len(alleleSet) > 1: return "Het"
+    elif alleleSet[0] == ".": return "Missing"
+    elif alleleSet[0] == "0": return "HomRef"
+    else: return "HomAlt"
 
 
 class VcfSite:
     
-    def __init__(self, Line, head):
-        headers = head.split()
-        elements = Line.split()
-        assert len(headers) == len(elements), "Error - vcf line has different number of elements to header"
+    __slots__ = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'REF_ALT', 'QUAL', 'FILTER', 'INFO', 'sampleNames', 'genoData']
+    
+    def __init__(self, elements=None, line=None, headers=None, headerLine=None, precompGenoData=None):
+        assert((elements != None or line != None) and (headers != None or headerLine != None))
+        if not headers: headers = headerLine.split()
+        if not elements: elements = line.split()
         
         lineDict = dict(zip(headers,elements))
         
@@ -40,17 +31,29 @@ class VcfSite:
         self.ID = lineDict["ID"]
         self.REF = lineDict["REF"]
         self.ALT = lineDict["ALT"].split(",")
+        self.alleleDict = dict(zip([str(i) for i in range(len(self.ALT)+1)], [self.REF] + self.ALT))
         self.QUAL = lineDict["QUAL"]
         self.FILTER = lineDict["FILTER"]
         self.INFO = lineDict["INFO"].split(";")
-                
+        
         genoInfoNames = lineDict["FORMAT"].split(":")
         
         self.sampleNames = headers[9:]
         
         self.genoData = {}
         for sampleName in self.sampleNames:
-            self.genoData[sampleName] = vcfGenoData(genoInfoNames, lineDict[sampleName].split(":"))
+            #if pre-compiled genotype data are available, try using those 
+            if precompGenoData and lineDict[sampleName] in precompGenoData:
+                self.genoData[sampleName] = precompGenoData[lineDict[sampleName]]
+            else:
+                #otherwise make dictionary for this sample
+                self.genoData[sampleName] = dict(zip(genoInfoNames, lineDict[sampleName].split(":")))
+                if "GT" in self.genoData[sampleName]:
+                    self.genoData[sampleName]["alleles"] = tuple(self.genoData[sampleName]["GT"])[::2]
+                    self.genoData[sampleName]["phase"] = "|" if "|" in self.genoData[sampleName]["GT"] else "/"
+                if precompGenoData["__counter__"] < precompGenoData["__maxSize__"]:
+                    precompGenoData[lineDict[sampleName]] = self.genoData[sampleName]
+                    precompGenoData["__counter__"] += 1
     
     
     def getGenotype(self, sample, gtFilters = [], withPhase=True, asNumbers = False, missing = None, allowOnly=None, keepPartial=False, ploidy=None):
@@ -63,31 +66,32 @@ class VcfSite:
         passed = True
         for gtFilter in gtFilters:
             #first check that it's applicable
-            if (gtFilter.siteTypes and self.getType() not in gtFilter.siteTypes) or (gtFilter.gtTypes and genoData.getType() not in gtFilter.gtTypes) or (gtFilter.samples and sample not in gtFilter.samples):
-                continue
+            if ("siteTypes" in gtFilter and self.getType() not in gtFilter["siteTypes"]): continue
+            if ("gtTypes" in gtFilter and GTtype(genoData["alleles"]) not in gtFilter["gtTypes"]): continue
+            if ("samples" in gtFilter and sample not in gtFilter["samples"]): continue
             #now check that it passes
-            try:
-                assert gtFilter.Min <= float(getattr(genoData, gtFilter.flag)) <= gtFilter.Max
-            except:
-                passed = False
-                break
+            try: passed = gtFilter["min"] <= float(genoData[gtFilter["flag"]]) <= gtFilter["max"]
+            except: passed = False
+            if not passed: break
         
-        if ploidy is None: ploidy=len(genoData.alleles)
+        if ploidy is None: ploidy=len(genoData["alleles"])
         
         if passed:
-            sampleAlleles = genoData.alleles
             if not asNumbers:
-                alleles = [self.REF]+self.ALT
                 try:
-                    sampleAlleles = [alleles[int(a)] for a in sampleAlleles]
+                    sampleAlleles = [self.alleleDict[a] for a in genoData["alleles"]]
                     if allowOnly: sampleAlleles = [a if a in allowOnly else missing for a in sampleAlleles]
                     if not keepPartial: sampleAlleles = sampleAlleles if missing not in sampleAlleles else [missing]*ploidy
                 
                 except: sampleAlleles = [missing]*ploidy
+            
+            else:
+                sampleAlleles = genoData["alleles"][:]
+        
         
         else: sampleAlleles = [missing]*ploidy
         
-        if withPhase: return genoData.phase.join(sampleAlleles)
+        if withPhase: return genoData["phase"].join(sampleAlleles)
         else: return "".join(sampleAlleles)
     
     
@@ -105,7 +109,6 @@ class VcfSite:
         
         return output
     
-    
     def getType(self):
         if len(self.REF) == 1:
             if self.ALT == ["."]: return "mono"
@@ -118,46 +121,31 @@ class VcfSite:
         if samples is None: samples = self.sampleNames
         fields = []
         for sample in samples:
-            try: fields.append(getattr(self.genoData[sample], field))
+            try: fields.append(self.genoData[sample][field])
             except: fields.append(missing)
         return fields
 
-class gtFilter:
+
+def parseHeaderLines(headerLines):
+    output = {}
+    output["contigs"] = []
+    output["contigLengths"] = {}
+    for line in headerLines:
+        if line.startswith("##contig"):
+            elements = re.split('=|,|>', line)
+            output["contigs"].append(elements[2])
+            try: output["contigLengths"][elements[2]] = int(elements[4])
+            except: output["contigLengths"][elements[2]] = None
+        
+        if line.startswith("#CHROM"):
+            output["mainHead"] = line
+            elements = line.split()
+            output["sampleNames"] = line.split()[9:]
+            output["nSamples"] = len(output["sampleNames"])
+            output["mainHeaders"] = elements
     
-    def __init__(self, flag, Min = None, Max = None, samples = None, siteTypes = None, gtTypes = None):
-        if not Min: Min = "-inf"
-        Min = float(Min)
-        if not Max: Max = "inf"
-        Max = float(Max)
-        self.flag = flag
-        self.Min = Min
-        self.Max = Max
-        self.samples = samples
-        self.siteTypes = siteTypes
-        self.gtTypes = gtTypes     
+    return output
 
-
-
-class HeadData:
-    
-    def __init__(self, headerLines):
-        self.contigs = []
-        self.contigLengths = {}
-        for Line in headerLines:
-            if Line[:8] == "##contig":
-                try:
-                    elements = re.split('=|,|>', Line)
-                    self.contigs.append(elements[2])
-                    try: self.contigLengths[elements[2]] = int(elements[4])
-                    except: self.contigLengths[elements[2]] = None
-                    
-                except:
-                    pass
-            
-            if Line[:6] == "#CHROM":
-                self.sampleNames = Line.split()[9:]
-                self.mainHead = Line
-            
 
 def getHeadData(fileName):
     headLines = []
@@ -165,55 +153,20 @@ def getHeadData(fileName):
         for line in fileObj:
             if line.startswith("#"): headLines.append(line)
             else: break
-    return HeadData(headLines)
+    return parseHeaderLines(headLines)
 
-class Reader:
+
+def parseVcfSites(lines, mainHeaders, precomp=True, precompMaxSize=10000):
+    if precomp:
+        precompGenoData = {}
+        precompGenoData["__maxSize__"] = precompMaxSize
+        precompGenoData["__counter__"] = 0
+    else: precompGenoData = None
     
-    def __init__(self, fileObj):
-        self.fileObj = fileObj
-        headLines = []
-        line = fileObj.readline()
-        while(line[:1] == "#"):
-            headLines.append(line)
-            if line[:6] != "#CHROM":
-                line = fileObj.readline()
-            else:
-                break
-        headData = HeadData(headLines)
-        self.contigs = headData.contigs
-        self.contigLengths = headData.contigLengths
-        self.sampleNames = headData.sampleNames
-        self.mainHead = headData.mainHead
-    
-    def lines(self):
-        line = self.fileObj.readline()
-        while len(line) >= 1:
-            yield line
-            line = self.fileObj.readline()
-    
-    def sites(self):
-        line = self.fileObj.readline()
-        while len(line) >= 1:
-            site = VcfSite(line, self.mainHead)
-            yield site
-            line = self.fileObj.readline()
-
-#def tabixStream(fileName, chrom, start, end):
-    #region = chrom+":"+str(start)+"-"+str(end)  
-    #return subprocess.Popen(['tabix',fileName, region], stdout=subprocess.PIPE, bufsize=1)
-
-#using pytabix (THIS HAS NOT BEEN TESTED)
-def tabixStream(fileName, chrom, start, end):
-    tb = tabix.open(fileName)
-    return tb.query(chrom, start, end)
-
-def tabixLines(fileName, chrom, start, end):
-    stream = tabixStream(fileName, chrom, start, end)
-    for line in iter(stream.stdout.readline, ""): yield line
-
-def tabixSites(fileName, chrom, start, end, mainHead):
-    lineGen = tabixLines(fileName, chrom, start, end)
-    for line in lineGen: yield VcfSite(line, mainHead)
+    for elements in lines:
+        if isinstance(elements, str): elements = elements.split()
+        if elements[0][0] == "#": continue
+        yield VcfSite(elements=elements, headers=mainHeaders, precompGenoData=precompGenoData)
 
 def canFloat(string):
     try: float(string)
@@ -228,8 +181,8 @@ if __name__ == "__main__":
     ### parse arguments
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--infile", help="Input vcf file", action = "store")
-    parser.add_argument("-o", "--outfile", help="Output csv file", action = "store")
+    parser.add_argument("-i", "--inFile", help="Input vcf file", action = "store")
+    parser.add_argument("-o", "--outFile", help="Output csv file", action = "store")
 
     #specific samples
     parser.add_argument("-s", "--samples", help="sample names (separated by commas)", action='store')
@@ -248,7 +201,7 @@ if __name__ == "__main__":
     parser.add_argument("--skipIndels", help="Skip indels", action = "store_true")
     parser.add_argument("--skipMono", help="Skip monomorphic sites", action = "store_true")
     
-    parser.add_argument("--ploidy", help="Ploidy for each sample", action = "store", type=int, nargs="+")
+    parser.add_argument("--ploidy", help="Ploidy for each sample", action = "store", type=int, nargs="+", default=[2])
     parser.add_argument("--ploidyFile", help="File with samples names and ploidy as columns", action = "store")
     
     parser.add_argument("--field", help="Optional - format field to extract", action = "store")
@@ -257,8 +210,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    infile = args.infile
-    outfile = args.outfile
     samples = args.samples
 
     if samples: samples = samples.split(",")
@@ -279,14 +230,12 @@ if __name__ == "__main__":
 
     if len(include) >= 1:
         include = set(include)
-        print >> sys.stderr, len(include), "contigs will be included."
-        
+        sys.stderr.write("{} contigs will be included.".format(len(include)))
+    
     if len(exclude) >= 1:
         exclude = set(exclude)
-        print >> sys.stderr, len(exclude), "contigs will be excluded."
-
-    minQual = args.minQual
-
+        sys.stderr.write("{} contigs will be excluded.".format(len(exclude)))
+    
     gtFilters = []
     if args.gtf:
         for gtf in args.gtf:
@@ -294,76 +243,54 @@ if __name__ == "__main__":
                 gtfDict = dict([tuple(i.split("=")) for i in gtf])
                 for key in gtfDict.keys():
                     assert key in ["flag","min","max", "siteTypes", "gtTypes", "samples"]
-                for x in ["siteTypes", "gtTypes", "samples"]:
-                    if x in gtfDict.keys(): gtfDict[x] = gtfDict[x].split(",")
-                    else: gtfDict[x] = None
-                for x in ["min", "max"]:
-                    if x not in gtfDict.keys(): gtfDict[x] = None
-                gtFilters.append(gtFilter(gtfDict["flag"], gtfDict["min"], gtfDict["max"], gtfDict["samples"], gtfDict["siteTypes"], gtfDict["gtTypes"]))
+                for key in ["siteTypes", "gtTypes", "samples"]:
+                    if key in gtfDict: gtfDict[key] = gtfDict[key].split(",")
+                gtfDict["min"] = float(gtfDict["min"]) if "min" in gtfDict else -np.inf
+                gtfDict["max"] = float(gtfDict["max"]) if "max" in gtfDict else np.inf
+                gtFilters.append(gtfDict)
             except:
-                print >> sys.stderr, "Bad genotype filter specification. See help."  
-                raise
-
-
-    skipIndels = args.skipIndels
-    skipMono = args.skipMono
-
-    outSep = args.outSep
+                raise ValueError("Bad genotype filter specification. See help.")
+    
     ##########################################################################################################################
 
     ### open files
 
-    if infile:
-        if infile[-3:] == ".gz":
-            In = gzip.open(infile, "r")
-        else:
-            In = open(infile, "r")
-    else:
-        In = sys.stdin
-
-    if outfile:
-        if outfile[-3:] == ".gz":
-            Out = gzip.open(outfile, "w")
-        else:
-            Out = open(outfile, "w")
-    else:
-        Out = sys.stdout
+    if args.inFile: inFile = gzip.open(args.inFile, "r") if args.inFile.endswith(".gz") else open(args.inFile, "r")
+    else: inFile = sys.stdin
 
 
-    ### read through header for all input files
-
-    vcf = Reader(In)
-
-    #check specified samples are in first file. Otherwise use this entire set
-
-    if samples:
-        for sample in samples: assert sample in vcf.sampleNames, "Specified sample name not in VCF header."
-    else: samples = vcf.sampleNames
+    if args.outFile: outFile = gzip.open(args.outFile, "w") if args.outFile.endswith(".gz") else open(args.outFile, "w")
+    else: outFile = sys.stdout
     
-    if args.ploidy is not None:
+    #header data
+    headData = getHeadData(args.inFile)
+    
+    #check specified samples are in first file. Otherwise use this entire set    
+    if samples:
+        for sample in samples: assert sample in headData["sampleNames"], "Specified sample name not in VCF header."
+    else: samples = headData["sampleNames"]
+    
+    if args.ploidyFile is not None:
+        with open(args.ploidyFile, "r") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
+    else:
         ploidy = args.ploidy if len(args.ploidy) != 1 else args.ploidy*len(samples)
         assert len(ploidy) == len(samples), "Incorrect number of ploidy values supplied."
         ploidyDict = dict(zip(samples,ploidy))
-    elif args.ploidyFile is not None:
-        with open(args.ploidyFile, "r") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
-    else: ploidyDict = None
 
 
     ##########################################################################################################################
 
-    Out.write("\t".join(["#CHROM", "POS"] + samples) + "\n")
-
-    vcfSites = vcf.sites()
-
-    for vcfSite in vcfSites:
+    outFile.write(args.outSep.join(["#CHROM", "POS"] + samples) + "\n")
+    
+    for vcfSite in parseVcfSites(inFile, headData["mainHeaders"]):
         if (exclude and vcfSite.CHROM in exclude) or (include and vcfSite.CHROM not in include): continue
-        #print >> sys.stderr, vcfSite.CHROM, vcfSite.POS, vcfSite.REF, vcfSite.ALT, vcfSite.getType()
-        if skipMono and vcfSite.getType() is "mono": continue
-        if minQual and canFloat(vcfSite.QUAL) and float(vcfSite.QUAL) < minQual: continue
+        if args.skipMono and vcfSite.getType() is "mono": continue
+        if args.minQual and canFloat(vcfSite.QUAL) and float(vcfSite.QUAL) < args.minQual: continue
         if args.field is not None: output = vcfSite.getGenoField(args.field,samples=samples, missing=args.missing)
         else:
-            allowed=["A","C","G","T"] if skipIndels else None
+            allowed=["A","C","G","T"] if args.skipIndels else None
             output = vcfSite.getGenotypes(gtFilters,asList=True,withPhase=True,samples=samples,missing=args.missing,
                                             allowOnly=allowed,keepPartial=False,ploidyDict=ploidyDict)
-        Out.write(outSep.join([vcfSite.CHROM, str(vcfSite.POS)] + output) + "\n")
-
+        outFile.write(args.outSep.join([vcfSite.CHROM, str(vcfSite.POS)] + output) + "\n")
+    
+    outFile.close()
