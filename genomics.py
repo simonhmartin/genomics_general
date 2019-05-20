@@ -2,6 +2,7 @@
 
 import numpy as np
 from copy import copy, deepcopy
+from collections import defaultdict
 import sys, string, time, re, math, itertools, random
 
 np.seterr(divide='ignore')
@@ -40,16 +41,22 @@ if sys.version_info>=(3,0):
     #translation for conversion of missing bases to gaps
     missingtrans = str.maketrans("Nn", "--")
     #translation table for bases
-    seqtrans = str.maketrans("ACGTKMRYVHBDN", "TGCAMKYRBDVHN")
+    complementTrans = str.maketrans("ACGTKMRYVHBDN", "TGCAMKYRBDVHN")
 else:
     #translation for conversion of missing bases to gaps
     missingtrans = string.maketrans("Nn", "--")
     #translation table for bases
-    seqtrans = string.maketrans("ACGTKMRYVHBDN", "TGCAMKYRBDVHN")
+    complementTrans = string.maketrans("ACGTKMRYVHBDN", "TGCAMKYRBDVHN")
 
+complementDict = dict(zip(list("ACGTKMRYVHBDN"), list("TGCAMKYRBDVHN")))
 
-def revTrans(seq):
-    return seq.translate(seqtrans)[::-1]
+def complement(seq):
+    if type(seq) == str: return seq.translate(complementTrans)
+    else: return [complementDict[a] for a in seq]
+
+def revComplement(seq):
+    if type(seq) == str: return seq.translate(complementTrans)[::-1]
+    else: return [complementDict[a] for a in seq[::-1]]
 
 def allPossibleSeqs(seq, ignoreNs = True):
     if ignoreNs: basesList = [iupacBasesDict[s] if s != "N" else "N" for s in seq]
@@ -74,7 +81,163 @@ def numArrayToSeqArray(numArray):
     for x in [0,1,2,3,-999]: seqArray[numArray==x] = numSeqDict[x]
     return seqArray
 
-####################################################################################
+def alleles(bases):
+    s = set(bases)
+    return [i for i in "ACGT" if i in s]
+
+################################################################################
+
+#working with coding sequences
+
+gencode = {
+    'ATA':'I', 'ATC':'I', 'ATT':'I', 'ATG':'M',
+    'ACA':'T', 'ACC':'T', 'ACG':'T', 'ACT':'T',
+    'AAC':'N', 'AAT':'N', 'AAA':'K', 'AAG':'K',
+    'AGC':'S', 'AGT':'S', 'AGA':'R', 'AGG':'R',
+    'CTA':'L', 'CTC':'L', 'CTG':'L', 'CTT':'L',
+    'CCA':'P', 'CCC':'P', 'CCG':'P', 'CCT':'P',
+    'CAC':'H', 'CAT':'H', 'CAA':'Q', 'CAG':'Q',
+    'CGA':'R', 'CGC':'R', 'CGG':'R', 'CGT':'R',
+    'GTA':'V', 'GTC':'V', 'GTG':'V', 'GTT':'V',
+    'GCA':'A', 'GCC':'A', 'GCG':'A', 'GCT':'A',
+    'GAC':'D', 'GAT':'D', 'GAA':'E', 'GAG':'E',
+    'GGA':'G', 'GGC':'G', 'GGG':'G', 'GGT':'G',
+    'TCA':'S', 'TCC':'S', 'TCG':'S', 'TCT':'S',
+    'TTC':'F', 'TTT':'F', 'TTA':'L', 'TTG':'L',
+    'TAC':'Y', 'TAT':'Y', 'TAA':'_', 'TAG':'_',
+    'TGC':'C', 'TGT':'C', 'TGA':'_', 'TGG':'W'}
+
+def translate(sequence):
+    """Return the translated protein from 'sequence' assuming +1 reading frame"""
+    return ''.join([gencode.get(sequence[3*i:3*i+3],'X') for i in range(len(sequence)//3)])
+
+def possibleCodons(pos1Alleles,pos2Alleles,pos3Alleles):
+    return ["".join(x) for x in itertools.product(pos1Alleles,pos2Alleles,pos3Alleles)]
+
+def possibleAAs(pos1Alleles,pos2Alleles,pos3Alleles):
+    return sorted(set([translate(codon) for codon in possibleCodons(pos1Alleles,pos2Alleles,pos3Alleles)]))
+
+#function that takes three sets of allels, corresponding to the alleles at the three codon positions
+#and outputs whether each one is synonymous or nonsynonymous
+#rejects cases where two sites are variable
+def synNon(pos1Alleles,pos2Alleles,pos3Alleles):
+    output = ["NA","NA","NA"]
+    #first check that each position has at least one allele and at most one position is variable
+    nAlleles = [len(alleles) for alleles in (pos1Alleles,pos2Alleles,pos3Alleles,)]
+    if not sorted(nAlleles) == [1,1,2]:
+        return output
+    else:
+        focal = nAlleles.index(2)
+        output[focal] = "syn" if len(possibleAAs(pos1Alleles,pos2Alleles,pos3Alleles)) == 1 else "non"
+    return output
+
+
+#dictionary to tell you how degenerate a site is based on how many unique amino acids are formed when that site is mutated
+#eg if four distinct amino acids can be formed, the site is 0-fold degenerate
+degenDict = {4:0, 3:2, 2:2, 1:4}
+
+def degeneracy(pos1Alleles,pos2Alleles,pos3Alleles):
+    #if its invariant, then they all get a degeneracy
+    if len(pos1Alleles) == len(pos2Alleles) == len(pos3Alleles) == 1:
+        output = [degenDict[len(possibleAAs("ACGT",pos2Alleles,pos3Alleles))],
+                  degenDict[len(possibleAAs(pos1Alleles,"ACGT",pos3Alleles))],
+                  degenDict[len(possibleAAs(pos1Alleles,pos2Alleles,"ACGT"))]]
+    
+    elif len(pos1Alleles) == 2 and len(pos2Alleles) == len(pos3Alleles) == 1:
+        output = [degenDict[len(possibleAAs("ACGT",pos2Alleles,pos3Alleles))], "NA", "NA"]
+    
+    elif len(pos2Alleles) == 2 and len(pos1Alleles) == len(pos3Alleles) == 1:
+        output = ["NA", degenDict[len(possibleAAs(pos1Alleles,"ACGT",pos3Alleles))], "NA"]
+    
+    elif len(pos3Alleles) == 2 and len(pos1Alleles) == len(pos2Alleles) == 1:
+        output = ["NA","NA", degenDict[len(possibleAAs(pos1Alleles,pos2Alleles,"ACGT"))]]
+    
+    else:
+        output = ["NA","NA","NA"]
+    
+    return output
+
+
+#function takes gff file and retrieves coordinates of all CDSs for all mRNAs
+def parseGenes(gff):
+    #little function to parse the info line
+    makeInfoDict = lambda infoString: dict([x.split("=") for x in infoString.strip(";").split(";")])
+    output = {}
+    for gffLine in gff:
+        if len(gffLine) > 1 and gffLine[0] != "#":
+            gffObjects = gffLine.strip().split("\t")
+            #store all mRNA and CDS data for the particular scaffold
+            scaffold = gffObjects[0]
+            if scaffold not in output.keys():
+                output[scaffold] = {}
+            if gffObjects[2] == "mRNA" or gffObjects[2] == "mrna" or gffObjects[2] == "MRNA":
+                #we've found a new mRNA
+                try: mRNA = makeInfoDict(gffObjects[-1])["ID"]
+                except:
+                    raise ValueError("Problem parsing mRNA information: " + gffObjects[-1]) 
+                if mRNA not in output[scaffold].keys():
+                    output[scaffold][mRNA] = {'start':int(gffObjects[3]), 'end':int(gffObjects[4]), 'strand':gffObjects[6], 'exons':0, 'cdsStarts':[], 'cdsEnds':[]}
+            elif gffObjects[2] == "CDS" or gffObjects[2] == "cds":
+                #we're reading CDSs for an existing mRNA
+                mRNA = makeInfoDict(gffObjects[-1])["Parent"]
+                start = int(gffObjects[3])
+                end = int(gffObjects[4])
+                output[scaffold][mRNA]['exons'] += 1
+                output[scaffold][mRNA]['cdsStarts'].append(start)
+                output[scaffold][mRNA]['cdsEnds'].append(end)
+    return(output)
+
+
+#function to extract a CDS sequence from a genomic sequence given the exon starts, ands and strand
+def CDSpositions(exonStarts, exonEnds, strand, trim=False):
+    nExons = len(exonStarts)
+    assert nExons == len(exonEnds)
+    
+    #for each exon, extract a list of scaffold positions
+    codingPositions = [list(range(exonStarts[i], exonEnds[i] + 1)) for i in range(nExons)]
+    
+    #reverse the positions if necessary
+    if strand == "-":
+        for _codingPositions_ in codingPositions: _codingPositions_.reverse()
+    
+    #unlist them to make one long set of positions
+    codingPositions = [i for _codingPositions_ in codingPositions for i in _codingPositions_]
+    
+    if trim:
+        overhang = len(codingPositions) % 3
+        if overhang != 0: codingPositions = codingPositions[:-overhang]
+    
+    return codingPositions
+
+#function to extract a CDS sequence from a genomic sequence given the exon starts, ands and strand
+def CDSsequence(exonStarts, exonEnds, strand, seqDict=None, seq=None, seqPos=None, trim=True):
+    
+    if seqDict is None:
+        #if dictionary of bases for each position is not provided, make it
+        assert len(seq) == len(seqPos)
+        seqDict = defaultdict(lambda: "N", zip(seqPos, seq))
+    
+    #for each exon, extract a list of scaffold positions
+    codingPositions = CDSpositions(exonStarts, exonEnds, strand, trim=trim)
+    
+    cdsSeq = "".join([seqDict[p] for p in codingPositions])
+    
+    if strand=="-": cdsSeq = cdsSeq.translate(complementTrans)
+    
+    return cdsSeq
+
+
+def countStops(cds, includeTerminal=False):
+    if includeTerminal:
+        triplets = [cds[i:i+3] for i in range(len(cds))[::3]]
+    else:
+        triplets = [cds[i:i+3] for i in range(len(cds)-3)[::3]]
+    stopCount = len([t for t in triplets if t in set(["TAA","TAG","TGA"])])
+    return stopCount
+
+
+
+################################################################################
 ########### some general list manipulation code
 
 #subset list into smaller lists
@@ -125,6 +288,11 @@ def makeList(thing):
         except TypeError: return [thing]
         else: return list(thing)
 
+def uniqueIndices(things, preserveOrder = False, asDict=False):
+    T,X,I = np.unique(things, return_index=True, return_inverse=True)
+    indices = np.array([np.where(I == i)[0] for i in range(len(T))])
+    order = np.argsort(X) if preserveOrder else np.arange(len(X))
+    return dict(zip(T[order], indices[order])) if asDict else [T[order], indices[order]]
 
 #################################################################################################
 
@@ -186,74 +354,6 @@ class Genotype:
         return np.bincount(self.numAlleles[self.numAlleles >= 0], minlength = 4)
     
     def isMissing(self): return np.any(self.numAlleles==-999)
-
-
-#function takes gff file and retrieves coordinates of all CDSs for all mRNAs
-def parseGenes(gff):
-    #little function to parse the info line
-    makeInfoDict = lambda infoString: dict([x.split("=") for x in infoString.strip(";").split(";")])
-    output = {}
-    for gffLine in gff:
-        if len(gffLine) > 1 and gffLine[0] != "#":
-            gffObjects = gffLine.strip().split("\t")
-            #store all mRNA and CDS data for the particular scaffold
-            scaffold = gffObjects[0]
-            if scaffold not in output.keys():
-                output[scaffold] = {}
-            if gffObjects[2] == "mRNA" or gffObjects[2] == "mrna" or gffObjects[2] == "MRNA":
-                #we've found a new mRNA
-                try: mRNA = makeInfoDict(gffObjects[-1])["ID"]
-                except:
-                    raise ValueError("Problem parsing mRNA information: " + gffObjects[-1]) 
-                if mRNA not in output[scaffold].keys():
-                    output[scaffold][mRNA] = {'start':int(gffObjects[3]), 'end':int(gffObjects[4]), 'strand':gffObjects[6], 'exons':0, 'cdsStarts':[], 'cdsEnds':[]}
-            elif gffObjects[2] == "CDS" or gffObjects[2] == "cds":
-                #we're reading CDSs for an existing mRNA
-                mRNA = makeInfoDict(gffObjects[-1])["Parent"]
-                start = int(gffObjects[3])
-                end = int(gffObjects[4])
-                output[scaffold][mRNA]['exons'] += 1
-                output[scaffold][mRNA]['cdsStarts'].append(start)
-                output[scaffold][mRNA]['cdsEnds'].append(end)
-    return(output)
-
-
-
-#function to extract a CDS sequence from a genomic sequence given the exon starts, ands and strand
-def CDS(seq, seqPos, exonStarts, exonEnds, strand):
-  assert len(exonStarts) == len(exonEnds)
-  assert len(seq) == len(seqPos)
-  seqDict = dict(zip(seqPos,seq))
-  cdsSeq = []
-  for x in range(len(exonStarts)):
-    positions = range(exonStarts[x], exonEnds[x]+1)
-    # flip positions if orientation is reverse
-    if strand == "-":
-      positions.reverse()
-      #retrieve bases from seq
-    for p in positions:
-      try:
-        cdsSeq.append(seqDict[p])
-      except:
-        cdsSeq.append("N")
-  cdsSeq = "".join(cdsSeq)  
-  #translate if necessary
-  if strand == "-":
-    cdsSeq = cdsSeq.translate(seqtrans)
-  #if not a multiple of three, remove trailing bases
-  overhang = len(cdsSeq) % 3
-  if overhang != 0:
-    cdsSeq = cdsSeq[:-overhang]
-  return cdsSeq
-
-
-def countStops(cds, includeTerminal=False):
-    if includeTerminal:
-        triplets = [cds[i:i+3] for i in range(len(cds))[::3]]
-    else:
-        triplets = [cds[i:i+3] for i in range(len(cds)-3)[::3]]
-    stopCount = len([t for t in triplets if t in set(["TAA","TAG","TGA"])])
-    return stopCount
 
 
 #convert one ambiguous sequence into two haploid pseudoPhased sequences
@@ -672,7 +772,9 @@ def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAllel
 
 
 class Alignment:
-    __slots__ = ['sequences' 'names' 'groups' 'groupIndDict' 'length' 'numArray' 'positions' 'sampleNames']
+    __slots__ = ['sequences', 'names', 'groups', 'groupIndDict', 'indGroupDict',
+                 'length', 'numArray', 'positions', 'sampleNames', 'nanMask', 'N', 'l',
+                 'array','numArray', '_distMat_']
     
     def __init__(self, sequences = None, names=None, groups = None, groupIndDict=None, length = None, numArray = None, positions=None, sampleNames=None):
         assert not sequences is numArray is length is None, "Specify sequences or length of empty sequence object."
@@ -841,7 +943,7 @@ class Alignment:
     
     def groupFreqStats(self):
         #dictionary of popgen statistics based on sites (as opposed to pairwise sequence comparisons)
-        # THIES ONLY USES SITES WITHOUT ANY MISSING DATA IN A GIVEN GROUP
+        # THIS ONLY USES SITES WITHOUT ANY MISSING DATA IN A GIVEN GROUP
         output = {}
         
         for groupName in np.unique(self.groups):
@@ -887,6 +989,17 @@ class Alignment:
     def consensus(self, minData = 0.001):
         propData = self.siteNonNan(prop=True)
         return [consensus(self.array[:,i][self.nanMask[:,i]]) if propData[i] >= minData else "N" for i in range(self.l)]
+    
+    def alleles(self):
+        return [set(self.array[:,i][self.nanMask[:,i]]) for i in range(self.l)]
+    
+    def sampleAlleles(self, sampleNames=None, asList = False):
+        if sampleNames is None: sampleNames,sampleIndices = uniqueIndices(self.sampleNames, preserveOrder=True)
+        else: sampleIndices = [np.where(self.sampleNames == sampleName)[0] for sampleName in sampleNames]
+        #get alleles at each site for each sample
+        sampleAlleles = [[set(self.array[sidx,i][self.nanMask[sidx,i]]) for sidx in sampleIndices] for i in range(self.l)]
+        if asList: return sampleAlleles
+        else: return [dict(zip(sampleNames,sampleAlleles[i])) for i in range(self.l)]
 
 
 def genoToAlignment(seqDict, sampleData=None, genoFormat = "diplo", positions = None):
@@ -1472,7 +1585,7 @@ def popSiteFreqs(aln, minData = 0):
 
 
 class GenoWindow:
-    __slots__ = ['scaffold', 'limits','sites', 'names', 'positions', 'ID']
+    __slots__ = ['scaffold', 'limits','sites', 'names', 'positions', 'ID', 'n']
     
     def __init__(self, scaffold = None, limits=[-np.inf,np.inf],sites = None, names = None, positions = None, ID = None):
         if sites is not None and positions is not None:
@@ -1634,21 +1747,25 @@ class GenoWindow:
         #try: return int(round(sum(self.positions)/len(self.positions)))
         #except: return np.NaN
 
-def parseGenoLine(line,names, type=str, splitPhased=False, precompDict=None, addToPrecomp=True):
+def parseGenoLine(line, names, scafCol=0, posCol=1, firstSampleCol=2,
+                  type=str, splitPhased=False, asDict = True, precompDict=None, addToPrecomp=True):
     if line and line != "":
-        x,y,z = line.split(None,2)
+        lineData = line.split(None,firstSampleCol)
+        GTstring = lineData[-1]
         #check if there is a precompiled genotype dictionary, and if so, check for the line in there
-        if precompDict and z in precompDict:
-            GTdict = precompDict[z]
+        if precompDict and GTstring in precompDict:
+            GTs = precompDict[GTstring]
         else:
-            GTs = z.split()
-            if splitPhased: GTs = [a for GT in GTs for a in re.split('/|\|', GT)]
+            GTs = GTstring.split()
+            if splitPhased: GTs = [a for GT in GTs for a in list(GT)[::2]]
             if type!=str: GTs = [float(GT) if type==float else int(GT) for GT in GTs]
-            GTdict = dict(zip(names,GTs))
+            if asDict: GTs = dict(zip(names,GTs))
             if (precompDict != None) and addToPrecomp:
-                precompDict[z] = GTdict
+                precompDict[GTstring] = GTs
                 precompDict["__counter__"] += 1
-        return {"scaffold": x, "position": int(y), "GTs": GTdict}
+        return {"scaffold": lineData[scafCol] if scafCol >= 0 else None,
+                "position": int(lineData[posCol]) if posCol >= 0 else None,
+                "GTs": GTs}
     else:
         return {"scaffold": None, "position": None, "GTs": None}
 
@@ -1661,40 +1778,34 @@ def getNext(generator):
     return generator.next() if sys.version_info.major < 3 else next(generator)
 
 class GenoFileReader:
-    def __init__(self,genoFile, headerLine=None, type=str, splitPhased = False, ploidy=None, precomp=True, precompMaxSize=10000):
+    def __init__(self,genoFile, headerLine=None, scafCol=0, posCol=1, firstSampleCol=2,
+                 type=str, splitPhased = False, ploidy=None, precomp=True, precompMaxSize=10000):
         self.genoFile = genoFile
         if not headerLine: headerLine = getNext(genoFile)
-        self.names = headerLine.split()[2:]
+        self.names = headerLine.split()[firstSampleCol:]
+        self.scafCol = scafCol
+        self.posCol = posCol
+        self.firstSampleCol = firstSampleCol
         self.type = type
         self.splitPhased=splitPhased
         if splitPhased:
             assert ploidy is not None, "Ploidy must be defined for splitting phased sequences"
-            self.names = makeHaploidNames(self.names, ploidy)
+            if self.names:
+                self.names = makeHaploidNames(self.names, ploidy)
         #add a dictionary for precompiled genotypes, if you want one
         self.precompDict = {}
         self.precompDict["__maxSize__"] = precompMaxSize
         self.precompDict["__counter__"] = 0
     
-    #def siteBySite(self):
-        #for line in self.genoFile:
-            #yield parseGenoLine(line, self.names, self.splitPhased)
-    
-    #def nextSite(self):
-        #try: line = self.genoFile.next()
-        #except: line = None
-        #return parseGenoLine(line, self.names, self.splitPhased)
-    
-    #Functions above replaced Feb2019 with these that incorporate a dict of precompiled lines.
-    #Improve speed only when there are lots of invariant sites
-    def siteBySite(self):
+    def siteBySite(self, asDict=True):
         for line in self.genoFile:
-            yield parseGenoLine(line, self.names, self.type, self.splitPhased,
+            yield parseGenoLine(line, self.names, self.scafCol, self.posCol, self.firstSampleCol, self.type, self.splitPhased, asDict,
                                 self.precompDict, addToPrecomp=self.precompDict["__counter__"]<self.precompDict["__maxSize__"])
     
-    def nextSite(self):
+    def nextSite(self, asDict=True):
         try: line = getNext(self.genoFile)
         except: line = None
-        return parseGenoLine(line, self.names, self.type, self.splitPhased,
+        return parseGenoLine(line, self.names, self.scafCol, self.posCol, self.firstSampleCol, self.type, self.splitPhased, asDict,
                             self.precompDict, addToPrecomp=self.precompDict["__counter__"]<self.precompDict["__maxSize__"])
 
 
@@ -1703,13 +1814,19 @@ def parseGenoFile(genoFile, headerLine=None, names = None, includePositions = Fa
     #file reader
     reader=GenoFileReader(genoFile, headerLine, splitPhased=splitPhased, ploidy=ploidy)
     #get names (only needed if we don't want to read all sequences in the file, otherwise we just get them from the file)
-    if names and splitPhased: names = makeHaploidNames(names, ploidy)
-    if not names: names = reader.names
+    if names:
+        extractSpecificGTs = True
+        if splitPhased: names = makeHaploidNames(names, ploidy)
+    else:
+        extractSpecificGTs = False
+        names = reader.names
+    
     #initialise window
     window = GenoWindow(names = names)
     #populate window
-    for siteData in reader.siteBySite():
-        window.addSite(GTs=[siteData["GTs"][name] for name in names], position=siteData["position"], ignorePosition= not includePositions)
+    for siteData in reader.siteBySite(asDict=extractSpecificGTs):
+        GTs = [siteData["GTs"][name] for name in names] if extractSpecificGTs else siteData["GTs"]
+        window.addSite(GTs=GTs, position=siteData["position"], ignorePosition= not includePositions)
     
     return window
 
@@ -1720,22 +1837,27 @@ def slidingCoordWindows(genoFile, windSize, stepSize, names = None, splitPhased=
     #file reader
     reader=GenoFileReader(genoFile, splitPhased=splitPhased, ploidy=ploidy)
     #get names
-    if names and splitPhased: names = makeHaploidNames(names, ploidy)
-    if not names: names = reader.names
+    if names:
+        extractSpecificGTs = True
+        if splitPhased: names = makeHaploidNames(names, ploidy)
+    else:
+        extractSpecificGTs = False
+        names = reader.names
     #window counter
     windowsDone = 0
     #initialise window
     window = GenoWindow(names = names)
     #first site
-    site = reader.nextSite()
+    site = reader.nextSite(asDict = extractSpecificGTs)
     while site["position"] is not None:
         #build window
         while site["scaffold"] == window.scaffold and site["position"] <= window.limits[1]:
             if site["position"] >= window.limits[0]:
                 #add this site to the window
-                window.addSite(GTs=[site["GTs"][name] for name in names], position=site["position"])
+                GTs = [site["GTs"][name] for name in names] if extractSpecificGTs else site["GTs"]
+                window.addSite(GTs=GTs, position=site["position"])
             #read next line
-            site = reader.nextSite()
+            site = reader.nextSite(asDict = extractSpecificGTs)
         
         '''if we get here, the line in hand is incompatible with the currrent window
             If the window is not empty, yield it'''
@@ -1762,7 +1884,7 @@ def slidingCoordWindows(genoFile, windSize, stepSize, names = None, splitPhased=
             else:
                 badScaf = site["scaffold"]
                 while site["scaffold"] == badScaf or (include and site["scaffold"] not in include and site["scaffold"] is not None) or (exclude and site["scaffold"] in exclude and site["scaffold"] is not None):
-                    site = reader.nextSite()
+                    site = reader.nextSite(asDict = extractSpecificGTs)
             
         #if we've reached the end of the file, break
         if site["position"] is None:
@@ -1777,21 +1899,26 @@ def slidingSitesWindows(genoFile, windSites, overlap, maxDist = np.inf, minSites
     #file reader
     reader=GenoFileReader(genoFile, splitPhased=splitPhased, ploidy=ploidy)
     #get names
-    if names and splitPhased: names = makeHaploidNames(names, ploidy)
-    if not names: names = reader.names
+    if names:
+        extractSpecificGTs = True
+        if splitPhased: names = makeHaploidNames(names, ploidy)
+    else:
+        extractSpecificGTs = False
+        names = reader.names
     #window counter
     windowsDone = 0
     #initialise window
     window = GenoWindow(names = names)
     #first site
-    site = reader.nextSite()
+    site = reader.nextSite(asDict = extractSpecificGTs)
     while site:
         #build window
         while site["scaffold"] == window.scaffold and window.seqLen() < windSites and (window.seqLen() == 0 or site["position"] - window.firstPos() <= maxDist):
             #add this site to the window
-            window.addSite(GTs=[site["GTs"][name] for name in names], position=site["position"])
+            GTs = [site["GTs"][name] for name in names] if extractSpecificGTs else site["GTs"]
+            window.addSite(GTs=GTs, position=site["position"])
             #read next line
-            site = reader.nextSite()
+            site = reader.nextSite(asDict = extractSpecificGTs)
         
         '''if we get here, either the window is full, or the line in hand is incompatible with the currrent window
             If the window has more than minSites, yield it'''
@@ -1820,7 +1947,7 @@ def slidingSitesWindows(genoFile, windSites, overlap, maxDist = np.inf, minSites
                     badScaf = site["scaffold"]
                     while site["scaffold"] == badScaf or (include and site["scaffold"] not in include and site["scaffold"] is not None) or (exclude and site["scaffold"] in exclude and site["scaffold"] is not None):
                     
-                        site = reader.nextSite()
+                        site = reader.nextSite(asDict = extractSpecificGTs)
         
         #If there are insufficient sites, and we're on the same scaffold, just trim off the furthest left site
         else:
@@ -1838,7 +1965,7 @@ def slidingSitesWindows(genoFile, windSites, overlap, maxDist = np.inf, minSites
                     badScaf = site["scaffold"]
                     while site["scaffold"] == badScaf or (include and site["scaffold"] not in include and site["scaffold"] is not None) or (exclude and site["scaffold"] in exclude and site["scaffold"] is not None):
                     
-                        site = reader.nextSite()
+                        site = reader.nextSite(asDict = extractSpecificGTs)
         
         #if we've reached the end of the file, break
         if site["position"] is None:
@@ -1853,11 +1980,15 @@ def predefinedCoordWindows(genoFile, windCoords, names = None, splitPhased=False
     #file reader
     reader=GenoFileReader(genoFile, splitPhased=splitPhased, ploidy=ploidy)
     #get names
-    if names and splitPhased: names = makeHaploidNames(names, ploidy)
-    if not names: names = reader.names
+    if names:
+        extractSpecificGTs = True
+        if splitPhased: names = makeHaploidNames(names, ploidy)
+    else:
+        extractSpecificGTs = False
+        names = reader.names
     window = None
     #read first line
-    site = reader.nextSite()
+    site = reader.nextSite(asDict = extractSpecificGTs)
     for w in range(len(windCoords)):
         
         #make new window, or if on same scaf just slide it
@@ -1877,18 +2008,19 @@ def predefinedCoordWindows(genoFile, windCoords, names = None, splitPhased=False
         while site["scaffold"] and (site["scaffold"] not in scafs or scafs.index(site["scaffold"]) < windScafIdx):
             badScaf = site["scaffold"]
             while site["scaffold"] == badScaf:
-                    site = reader.nextSite()
+                    site = reader.nextSite(asDict = extractSpecificGTs)
         
         #if we're on the right scaffold but abve thwe windiow, keep reading
         while site["scaffold"] == window.scaffold and site["position"] < window.limits[0]:
-            site = reader.nextSite()
+            site = reader.nextSite(asDict = extractSpecificGTs)
         
         #if we are in a window - build it
         while site["scaffold"] == window.scaffold and window.limits[0] <= site["position"] <= window.limits[1]:
             #add this site to the window
-            window.addSite(GTs=[site["GTs"][name] for name in names], position=site["position"])
+            GTs = [site["GTs"][name] for name in names] if extractSpecificGTs else site["GTs"]
+            window.addSite(GTs=GTs, position=site["position"])
             #read next line
-            site = reader.nextSite()
+            site = reader.nextSite(asDict = extractSpecificGTs)
         
         '''When we get here, either:
             We're on the right scaffold but below the current window
@@ -1909,14 +2041,18 @@ def nonOverlappingSitesWindows(genoFile, windSites, names = None, splitPhased=Fa
     #file reader
     reader=GenoFileReader(genoFile, splitPhased=splitPhased, ploidy=ploidy)
     #get names
-    if names and splitPhased: names = makeHaploidNames(names, ploidy)
-    if not names: names = reader.names
+    if names:
+        extractSpecificGTs = True
+        if splitPhased: names = makeHaploidNames(names, ploidy)
+    else:
+        extractSpecificGTs = False
+        names = reader.names
     #blocks counter
     windowsDone = 0
     #initialise an empty block
     window = None
     #read first line
-    site = reader.nextSite()
+    site = reader.nextSite(asDict = extractSpecificGTs)
     while True:
         #initialise window
         #if its a scaffold we want to analyse, start new window
@@ -1929,14 +2065,15 @@ def nonOverlappingSitesWindows(genoFile, windSites, names = None, splitPhased=Fa
             badScaf = site["scaffold"]
             while site["scaffold"] == badScaf or (include and site["scaffold"] not in include and site["scaffold"] is not None) or (exclude and site["scaffold"] in exclude and site["scaffold"] is not None):
             
-                site = reader.nextSite()
+                site = reader.nextSite(asDict = extractSpecificGTs)
 
         #build window
         while window and site["scaffold"] == window.scaffold and window.seqLen() < windSites:
             #add this site to the window
-            window.addSite(GTs=[site["GTs"][name] for name in names], position=site["position"])
+            GTs = [site["GTs"][name] for name in names] if extractSpecificGTs else site["GTs"]
+            window.addSite(GTs=GTs, position=site["position"])
             #read next line
-            site = reader.nextSite()
+            site = reader.nextSite(asDict = extractSpecificGTs)
         
         '''if we get here, either the window is full, or the line in hand is incompatible with the currrent window
             If the window has more than minSites, yield it'''
@@ -2043,3 +2180,62 @@ def parseFai(faiFileHandle):
         scafs.append(scaf)
         lengths.append(int(length))
     return (tuple(scafs), tuple(lengths),)
+
+###########################################################################################################
+#class for working with intervals
+
+def parseRegionText(regionText):
+    splitText = regionText.split(":")
+    seqName = splitText[0]
+    if len(splitText) < 3 or splitText[2] == "": ori = "+"
+    else: ori = splitText[2]
+    if ori not in "+-": raise ValueError("Incorrect region specification")
+    try:
+        fromTo = [int(x) for x in splitText[1].split("-")]
+        if len(fromTo) == 1: fromTo.append(None)
+        if fromTo[1] != None and fromTo[0] > fromTo[1]:
+            fromTo = fromTo[::-1]
+            ori = "-"
+        return (seqName,fromTo[0],fromTo[1],ori,)
+    except: return (seqName,None,None,ori,)
+
+
+def parseRegionList(regionList):
+    seqName = regionList[0]
+    if len(regionList) < 4: ori = "+"
+    else: ori = regionList[3]
+    if ori not in "+-": raise ValueError("Orientation must be + or -")
+    try:
+        fromTo = [int(x) for x in regionList[1:3]]
+        if len(fromTo) == 1: fromTo.append(None)
+        if fromTo[1] != None and fromTo[0] > fromTo[1]:
+            fromTo = fromTo[::-1]
+            ori = "-"
+        return (seqName,fromTo[0],fromTo[1],ori,)
+    except: return (seqName,None,None,ori,)
+
+
+class Intervals():
+    def __init__(self, regions=None, tuples=None, chroms=None, starts=None, ends=None):
+        if regions is not None:
+            tuples = [parseRegionText(r) for r in regions]
+        if tuples is not None:
+            self.chroms = np.array([t[0] for t in tuples])
+            self.starts = np.array([t[1] if len(t)>1 and t[1] is not None else 0 for t in tuples])
+            self.ends = np.array([t[2] if len(t)>2 and t[2] is not None else t[1] if len(t)>1 and t[1] is not None else np.inf for t in tuples])
+        else:
+            self.chroms = np.array(chroms) if chroms is not None else np.repeat("", len(starts))
+            self.starts = np.array(starts) if starts is not None else np.repeat(0, len(chroms))
+            self.ends = np.array(ends) if ends is not None else np.array(starts) if starts is not None else np.repeat(np.inf, len(chroms))
+            assert len(self.starts)==len(self.ends)==len(self.chroms)
+    
+    def containsPoint(self, pos, chrom=""):
+        return (self.chroms == chrom) & (self.starts <= pos) & (pos <= self.ends)
+    
+    def asRegionText(self):
+        return ["{}{}{}{}{}".format(self.chroms[i],
+                                    ":" if self.chroms[i] != "" and self.starts[i] > 0 else "",
+                                    int(self.starts[i]) if self.starts[i] > 0 else "",
+                                    "-" if self.starts[i] > 0 and self.ends[i] < np.inf else "",
+                                    int(self.ends[i]) if self.starts[i] > 0 and self.ends[i] < np.inf else "") for i in range(len(self.starts))]
+
