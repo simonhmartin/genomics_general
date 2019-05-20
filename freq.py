@@ -24,7 +24,7 @@ def fileSlicer(f, N=1000000):
 
 '''A function that reads from the input queue, calls some other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using. This is the function that will run on each of the N cores.'''
-def freqs_wrapper(inQueue, resultQueue, headerLine, genoFormat, sampleData, minData, target, asCounts, keepNanLines = False):
+def freqs_wrapper(inQueue, resultQueue, headerLine, genoFormat, sampleData, target, minData, asCounts, threshold, keepNanLines = False):
     while True:
         
         sliceNumber,fileSlice = inQueue.get() # retrieve slice
@@ -43,16 +43,15 @@ def freqs_wrapper(inQueue, resultQueue, headerLine, genoFormat, sampleData, minD
         #if there is no target, fetch all base counts
         
         if not target:
-            goodSites = np.apply_along_axis(lambda(x): ~np.any(np.isnan(x)),1,baseColumns)
             popFreqs = []
             for pop in sampleData.popNames:
                 goodData = popAlns[pop].siteNonNan() >= minData
-                sites = np.where(goodSites & goodData)[0]
-                baseFreqs = popAlns[pop].siteFreqs(sites, asCounts=asCounts)
+                sites = np.where(goodData)[0]
+                baseFreqs = popAlns[pop].siteFreqs(asCounts=asCounts)
                 popFreqs.append([",".join(row) for row in baseFreqs.astype(str)])
             
-            allFreqs = np.vstack(popFreqs)
-        
+            allFreqs = np.column_stack(popFreqs)
+            
         else:
             #otherwise define the target base at each site
             if target == "derived":
@@ -85,6 +84,10 @@ def freqs_wrapper(inQueue, resultQueue, headerLine, genoFormat, sampleData, minD
                 popFreqs.append(np.around(targetFreqs, 4))
             
             allFreqs = np.hstack(popFreqs)
+            
+            if threshold and not asCounts:
+                allFreqs[allFreqs >= threshold] = 1
+                allFreqs[allFreqs < threshold] = 0
         
         #fetch scaffold and position
         scafPos = np.array([line.split(None, 2)[:2] for line in fileSlice], dtype="str")
@@ -186,20 +189,24 @@ parser.add_argument("--popsFile", help="Optional file of sample names and popula
 parser.add_argument("--target", help="All or single base frequency (derived assumes last pop is outgroup)", choices = ("minor","derived"),
                     action = "store", default=None)
 
-parser.add_argument("--asCounts", help="Return drwquencies as counts", action='store_true')
+parser.add_argument("--asCounts", help="Return frequencies as counts", action='store_true')
 
 #define ploidy if not 2
 parser.add_argument("--ploidy", help="Ploidy for each sample", action = "store", type=int, nargs="+")
 parser.add_argument("--ploidyFile", help="File with samples names and ploidy as columns", action = "store")
 
 #optional missing data argument
-parser.add_argument("--minData", help="Minimum proportion of non-missing data per population", type=float, action = "store", default = 0.1, metavar = "proportion")
+parser.add_argument("--minData", help="Minimum proportion of non-missing data per population", type=float, action = "store", default = 0, metavar = "proportion")
+
+#threshold value for rounding to 0 or 1 (only for very specific applicatons)
+parser.add_argument("--threshold", help="Threshold value for rounding to 0 or 1", type=float, action = "store", metavar = "proportion")
 
 parser.add_argument("--keepNanLines", help="Output lines with no information", action='store_true')
 
 
 #other
 parser.add_argument("-t", "--threads", help="Analysis threads", type=int, action = "store", default = 1)
+parser.add_argument("--sliceSize", help="ADVANCED: number of bytes to process at a time in each thread", type=int, action = "store", default = 1000000)
 parser.add_argument("--verbose", help="Verbose output.", action = "store_true")
 parser.add_argument("--test", help="Test - runs 10 slices", action='store_true')
 
@@ -257,6 +264,12 @@ outFile.write("\t".join(popNames) + "\n")
 
 ##########################################################################################################################
 
+asCounts = args.asCounts if args.target else True
+keepNanLines = args.keepNanLines if args.target else True
+minData = args.minData if args.target else 0
+
+##########################################################################################################################
+
 #counting stat that will let keep track of how far we are
 slicesQueued = 0
 resultsReceived = 0
@@ -278,7 +291,7 @@ workerThreads = []
 sys.stderr.write("\nStarting {} worker threads\n".format(args.threads))
 for x in range(args.threads):
   workerThread = Process(target=freqs_wrapper, args = (inQueue, resultQueue, headerLine, args.genoFormat, sampleData,
-                                                 args.minData, args.target, args.asCounts, args.keepNanLines,))
+                                                 args.target, minData, asCounts, args.threshold, keepNanLines,))
   workerThread.daemon = True
   workerThread.start()
   workerThreads.append(workerThread)
@@ -303,7 +316,7 @@ checkerThread.start()
 ########################################################################################################################
 
 #generate slices and queue
-fileSlices = fileSlicer(genoFile, 1000000)
+fileSlices = fileSlicer(genoFile, args.sliceSize)
 
 if not args.test:
     for fileSlice in fileSlices:
