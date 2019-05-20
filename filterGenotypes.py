@@ -109,11 +109,6 @@ def checkStats():
         sleep(10)
         print >> sys.stderr, linesRead, "lines read,", podsQueued, "pods queued,", podsDone, "pods filtered,", podsSorted, "pods sorted,", podsWritten, "pods written,", linesWritten, "good lines written."
 
-def lineReader(fileObj):
-    line = fileObj.readline()
-    while len(line) >= 1:
-        yield line
-        line = fileObj.readline()
 
 #########################################################################################################################
 
@@ -389,11 +384,10 @@ worker.start()
 #pass pods on to processor(s)
 podSize = args.podSize
 
-lineGen = lineReader(In)
 pod = []
 podNumber = 0
 
-for line in lineGen:
+for line in In:
     linesRead += 1
     pod.append((linesRead, line))
     
