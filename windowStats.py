@@ -7,6 +7,13 @@ import numpy as np
 
 import genomics
 
+def nanmin(a):
+    try: return numbers[i,:][nanMask[i,:]].min()
+    except: return np.NaN
+
+def nanmax(a):
+    try: return numbers[i,:][nanMask[i,:]].max()
+    except: return np.NaN
 
 ####################################################################################################################
 
@@ -23,7 +30,7 @@ parser.add_argument("--windCoords", help="Window coordinates file (scaffold star
 parser.add_argument("-i", "--inFile", help="Input genotypes file", required = False)
 parser.add_argument("-o", "--outFile", help="Results file", required = False)
 
-parser.add_argument("--columns", help="Columns to analyse, separated by commas", required = False)
+parser.add_argument("--columns", help="Columns to analyse, separated by spaces", required = False, nargs="+")
 
 parser.add_argument("--exclude", help="File of scaffolds to exclude", required = False)
 parser.add_argument("--include", help="File of scaffolds to analyse", required = False)
@@ -35,9 +42,6 @@ args = parser.parse_args()
 
 #window parameters
 windType = args.windType
-
-columns = args.columns
-if columns is not None: columns = columns.split(",")
 
 if args.windType == "coordinate":
     assert args.windSize, "Window size must be provided."
@@ -111,14 +115,14 @@ else:
 
 #get windows and analyse
 if windType == "coordinate": windowGenerator = genomics.slidingCoordWindows(inFile, windSize, stepSize,
-                                                                            columns,
+                                                                            args.columns,
                                                                             include = scafsToInclude,
                                                                             exclude = scafsToExclude)
 elif windType == "sites": windowGenerator = genomics.slidingSitesWindows(inFile, windSize, overlap,
-                                                                         maxDist, minSites, columns,
+                                                                         maxDist, minSites, args.columns,
                                                                          include = scafsToInclude,
                                                                          exclude = scafsToExclude)
-else: windowGenerator = genomics.predefinedCoordWindows(inFile, windCoords, columns)
+else: windowGenerator = genomics.predefinedCoordWindows(inFile, windCoords, args.columns)
 
 
 n=0
@@ -127,7 +131,7 @@ for window in windowGenerator:
     #if its the first window, get the headings and write
     if n == 0:
         for name in window.names:
-            outFile.write(","+",".join([name + "_mean",name + "_median", name + "_max", name + "_min", name + "_sd"]))
+            outFile.write(","+",".join([name + "_mean",name + "_median", name + "_max", name + "_min", name + "_sd", name + "_sum"]))
         outFile.write("\n")
     
     if windType == "coordinate" or windType == "predefined":
@@ -139,11 +143,14 @@ for window in windowGenerator:
     if sites >= minSites:
         numDict = window.seqDict()
         numbers = np.array([numDict[name] for name in window.names], dtype = "float")
-        outFile.write(",".join([",".join([str(x) for x in [np.mean(numbers[i,:]),
-                                                           np.median(numbers[i,:]),
-                                                           np.min(numbers[i,:]),
-                                                           np.max(numbers[i,:]),
-                                                           np.std(numbers[i,:])]]) for i in range(window.n)]))
+        nanMask = ~np.isnan(numbers)
+        
+        outFile.write(",".join([",".join([str(x) for x in [numbers[i,:][nanMask[i,:]].mean(),
+                                                           np.median(numbers[i,:][nanMask[i,:]]),
+                                                           nanmin(numbers[i,:][nanMask[i,:]]),
+                                                           nanmax(numbers[i,:][nanMask[i,:]]),
+                                                           np.std(numbers[i,:][nanMask[i,:]]),
+                                                           np.sum(numbers[i,:][nanMask[i,:]])]]) for i in range(window.n)]))
     
     else: outFile.write(",".join([",".join([str(np.NaN)]*5) for i in range(window.n)]))
 
