@@ -20,7 +20,7 @@ from time import sleep
 
 '''A function that reads from the window queue, calls some other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using. This is the function that will run on each of the N cores.'''
-def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, minSites, outFormat, roundTo, outputWindowData, addWindowID=False):
+def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, minSites, minPerInd, outFormat, roundTo, outputWindowData, addWindowID=False):
     while True:
         nInd = len(sampleData.indNames)
         windowNumber,window = windowQueue.get() # retrieve window
@@ -30,13 +30,16 @@ def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, mi
         if sites >= minSites:
             isGood = True
             #make alignment object
-            Aln = genomics.genoToAlignment(window.seqDict(), sampleData, genoFormat = genoFormat)
-            pairDistDict = Aln.indPairDists()
-            distMat = np.zeros([nInd,nInd])
-            for i,j in itertools.combinations_with_replacement(range(nInd),2):
-                distMat[i,j] = distMat[j,i] = pairDistDict[sampleData.indNames[i]][sampleData.indNames[j]]
-        else:
-            isGood = False
+            aln = genomics.genoToAlignment(window.seqDict(), sampleData, genoFormat = genoFormat)
+            if minPerInd and min(aln.seqNonNan()) < minPerInd: isGood = False
+            else:
+                pairDistDict = aln.indPairDists()
+                distMat = np.zeros([nInd,nInd])
+                for i,j in itertools.combinations_with_replacement(range(nInd),2):
+                    distMat[i,j] = distMat[j,i] = pairDistDict[sampleData.indNames[i]][sampleData.indNames[j]]
+        else: isGood = False
+        
+        if not isGood:
             distMat = np.empty([nInd,nInd])
             distMat.fill(np.NaN)
         if outFormat == "nexus": distMatString = genomics.makeDistMatNexusString(distMat, names=sampleData.indNames, roundTo=roundTo)
@@ -45,8 +48,8 @@ def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, mi
         result = {"main":distMatString}
         if outputWindowData:
             windowData = [] if not addWindowID else [window.ID]
-            windowData += [scaf,start,end,mid,sites] + values
-            windowDataString = "\t".join([str(x) for x in results])
+            windowData += [scaf,start,end,mid,sites]
+            windowDataString = "\t".join([str(x) for x in windowData]) + "\n"
             result["windows"] = windowDataString
         resultQueue.put((windowNumber, result, isGood))
 
@@ -112,15 +115,16 @@ parser.add_argument("--windType", action = "store", choices = ("sites","coordina
 parser.add_argument("-w", "--windSize", help="Window size in bases", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-s", "--stepSize", help="Step size for sliding window", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-m", "--minSites", help="Minumum good sites per window", type=int, action = "store", required = False, metavar="sites", default = 1)
+parser.add_argument("-Mi", "--minPerInd", help="Minumum good sites per individual", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-O", "--overlap", help="Overlap for sites sliding window", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-D", "--maxDist", help="Maximum span distance for sites window", type=int, action = "store", required = False)
 parser.add_argument("--windCoords", help="Window coordinates file (scaffold start end)", required = False)
 
-parser.add_argument("--samples", help="Samples to include for individual analysis", action = "store", metavar = "sample names")
+parser.add_argument("--samples", help="Samples to include for individual analysis", nargs="+", action = "store", metavar = "sample names")
 
 parser.add_argument("--ploidy", help="Ploidy for each sample", action = "store", type=int, nargs="+")
 parser.add_argument("--ploidyFile", help="File with samples names and ploidy as columns", action = "store")
-parser.add_argument("--haploid", help="Alternatively just name samples that are haploid (comma separated)", action = "store", metavar = "sample names")
+parser.add_argument("--haploid", help="Alternatively just name samples that are haploid", nargs="+", action = "store", metavar = "sample names")
 parser.add_argument("--inferPloidy", help="Ploidy will be inferred in each window (NOT RECOMMENED)", action = "store_true")
 
 parser.add_argument("-g", "--genoFile", help="Input genotypes file", required = False)
@@ -185,7 +189,7 @@ verbose = args.verbose
 allInds = []
 
 if args.samples is not None:
-    allInds = list(set(allInds + args.samples.split(",")))
+    allInds = list(set(allInds + args.samples))
 
 if len(allInds) == 0:
     with gzip.open(args.genoFile, "r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r") as gf:
@@ -203,7 +207,7 @@ else:
     if args.genoFormat == "haplo": ploidyDict = dict(zip(allInds,[1]*len(allInds)))
     else: ploidyDict = dict(zip(allInds,[2]*len(allInds)))
     if args.haploid:
-        for sample in args.haploid.split(","): ploidyDict[sample] = 1
+        for sample in args.haploid: ploidyDict[sample] = 1
 
 sampleData = genomics.SampleData(indNames = allInds, ploidyDict = ploidyDict)
 
@@ -220,7 +224,7 @@ if args.outFile: outs["main"] = gzip.open(args.outFile, "w") if args.outFile.end
 else: outs["main"] = sys.stdout
 
 if args.windowDataOutFile:
-    outs["windows"] = gzip.open(args.args.windowDataOutFile, "w") if args.args.windowDataOutFile.endswith(".gz") else open(args.args.windowDataOutFile, "w")
+    outs["windows"] = gzip.open(args.windowDataOutFile, "w") if args.windowDataOutFile.endswith(".gz") else open(args.windowDataOutFile, "w")
     if not args.addWindowID: outs["windows"].write("scaffold,start,end,mid,sites,")
     else: outs["windows"].write("windowID,scaffold,start,end,mid,sites,")
     outputWindowData = True
@@ -268,7 +272,7 @@ writeQueue = SimpleQueue()
 of course these will only start doing anything after we put data into the line queue
 the function we call is actually a wrapper for another function.(s) This one reads from the line queue, passes to some analysis function(s), gets the results and sends to the result queue'''
 for x in range(args.threads):
-    worker = Process(target=stats_wrapper, args = (windowQueue, resultQueue, args.windType, args.genoFormat, sampleData, minSites,
+    worker = Process(target=stats_wrapper, args = (windowQueue, resultQueue, args.windType, args.genoFormat, sampleData, minSites, args.minPerInd,
                                                     args.outFormat, args.roundTo, outputWindowData,args.addWindowID))
     worker.daemon = True
     worker.start()
