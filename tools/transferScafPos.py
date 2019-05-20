@@ -32,7 +32,7 @@ parser.add_argument("--scafCol", help="Column of scaffold name", action = "store
 parser.add_argument("--startCol", help="Column of start position", action = "store", type=int, default=2)
 parser.add_argument("--endCol", help="Column of end position", action = "store", type=int, default=2)
 parser.add_argument("--strandCol", help="Column of strand (orientation)", action = "store", type=int)
-parser.add_argument("--sep", help="Input file separator", action = "store", default="\t")
+parser.add_argument("--sep", help="Input file separator", action = "store", default=None)
 parser.add_argument("-f", "--failFile", help="Failed lines file", action = "store")
 parser.add_argument("-a", "--agpFile", help="AGP file for position conversion", action='store')
 parser.add_argument("-t", "--transfersFile", help="Chrom and position transfer table (alternative to AGP)", action='store')
@@ -61,6 +61,7 @@ else:scafCol, startCol, endCol, strandCol = (args.scafCol, args.startCol, args.e
 
 
 sep=args.sep
+outsep = sep if sep != None else "\t"
 
 if not args.transfersFile and not args.agpFile:
     raise ValueError("Please provide an AGP file (or a 'transfers' file)")
@@ -137,29 +138,29 @@ for line in inFile:
                 elements[startCol-1] = newStart
                 elements[endCol-1] = newEnd
                 if strandCol: elements[strandCol-1] = newStrand
-                outFile.write(sep.join(elements) + "\n")
+                outFile.write(outsep.join(elements) + "\n")
             
             else:
                 failFile.write("#BROKEN\n")
-                failFile.write(sep.join(elements) + "\n")
+                failFile.write(outsep.join(elements) + "\n")
                 
                 if args.keepFails:
                     elements[scafCol-1] = "NA"
                     elements[startCol-1] = "NA"
                     elements[endCol-1] = "NA"
                     if strandCol: elements[strandCol-1] = "NA"
-                    outFile.write(sep.join(elements) + "\n")
+                    outFile.write(outsep.join(elements) + "\n")
                 
         else:
             failFile.write("#MISSING\n")
-            failFile.write(sep.join(elements) + "\n")
+            failFile.write(outsep.join(elements) + "\n")
             
             if args.keepFails:
                 elements[scafCol-1] = "NA"
                 elements[startCol-1] = "NA"
                 elements[endCol-1] = "NA"
                 if strandCol: elements[strandCol-1] = "NA"
-                outFile.write(sep.join(elements) + "\n")
+                outFile.write(outsep.join(elements) + "\n")
 
 outFile.close()
 failFile.close()
