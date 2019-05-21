@@ -882,21 +882,23 @@ class Alignment:
     #makes a dict of average distance among samples.
     #if all are haploid, this is just a dictionary of the output of distMatrix()
     #if some have ploidy > 1, this will average distance among sample haplotypes
-    def indPairDists(self, asDict=True):
+    def indPairDists(self, asDict=True, includeSameWithSame=False):
         distMat = self.distMatrix() if self._distMat_ is None else self._distMat_ 
+        #mask diagonal if necessary
+        if not includeSameWithSame: np.fill_diagonal(distMat, np.NaN) # set all same-with-same to Na
         sampleNames,sampleIndices = uniqueIndices(self.sampleNames, preserveOrder=True)
         n = len(sampleNames)
         if asDict:
             pairDists = {}
             for sampleName in sampleNames: pairDists[sampleName] = {} 
             for i,j in itertools.product(range(n),repeat=2):
-                pairDists[sampleNames[i]][sampleNames[j]] = np.mean(distMat[np.ix_(sampleIndices[i],sampleIndices[j])])
+                pairDists[sampleNames[i]][sampleNames[j]] = np.nanmean(distMat[np.ix_(sampleIndices[i],sampleIndices[j])])
             
             return pairDists
         else:
             indDistMat = np.zeros(n,n)
             for i,j in itertools.combinations_with_replacement(range(n),2):
-                    indDistMat[i,j] = indDistMat[j,i] = np.mean(distMat[np.ix_(sampleIndices[i],sampleIndices[j])])
+                    indDistMat[i,j] = indDistMat[j,i] = np.nanmean(distMat[np.ix_(sampleIndices[i],sampleIndices[j])])
             return indDistMat
     
     def groupDistStats(self, doPairs = True):

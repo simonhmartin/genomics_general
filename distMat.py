@@ -20,7 +20,8 @@ from time import sleep
 
 '''A function that reads from the window queue, calls some other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using. This is the function that will run on each of the N cores.'''
-def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, minSites, minPerInd, outFormat, roundTo, outputWindowData, addWindowID=False):
+def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, minSites, minPerInd, includeSameWithSame,
+                  outFormat, roundTo, outputWindowData, addWindowID=False):
     while True:
         nInd = len(sampleData.indNames)
         windowNumber,window = windowQueue.get() # retrieve window
@@ -33,7 +34,7 @@ def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, mi
             aln = genomics.genoToAlignment(window.seqDict(), sampleData, genoFormat = genoFormat)
             if minPerInd and min(aln.seqNonNan()) < minPerInd: isGood = False
             else:
-                pairDistDict = aln.indPairDists()
+                pairDistDict = aln.indPairDists(includeSameWithSame=includeSameWithSame)
                 distMat = np.zeros([nInd,nInd])
                 for i,j in itertools.combinations_with_replacement(range(nInd),2):
                     distMat[i,j] = distMat[j,i] = pairDistDict[sampleData.indNames[i]][sampleData.indNames[j]]
@@ -121,6 +122,8 @@ parser.add_argument("-D", "--maxDist", help="Maximum span distance for sites win
 parser.add_argument("--windCoords", help="Window coordinates file (scaffold start end)", required = False)
 
 parser.add_argument("--samples", help="Samples to include for individual analysis", nargs="+", action = "store", metavar = "sample names")
+parser.add_argument("--includeSameWithSame", action="store_true",
+                    help="Include comparisons of each haplotype to itself.")
 
 parser.add_argument("--ploidy", help="Ploidy for each sample", action = "store", type=int, nargs="+")
 parser.add_argument("--ploidyFile", help="File with samples names and ploidy as columns", action = "store")
@@ -273,7 +276,7 @@ of course these will only start doing anything after we put data into the line q
 the function we call is actually a wrapper for another function.(s) This one reads from the line queue, passes to some analysis function(s), gets the results and sends to the result queue'''
 for x in range(args.threads):
     worker = Process(target=stats_wrapper, args = (windowQueue, resultQueue, args.windType, args.genoFormat, sampleData, minSites, args.minPerInd,
-                                                    args.outFormat, args.roundTo, outputWindowData,args.addWindowID))
+                                                    args.includeSameWithSame, args.outFormat, args.roundTo, outputWindowData,args.addWindowID))
     worker.daemon = True
     worker.start()
     print >> sys.stderr, "started worker", x
