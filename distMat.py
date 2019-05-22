@@ -13,7 +13,7 @@ from multiprocessing.queues import SimpleQueue
 from threading import Thread
 from time import sleep
 
-
+np.seterr(divide='ignore')
 
 ####################################################################################################################################
 
