@@ -559,7 +559,9 @@ def majorAllele(bases):
 
 def binBaseFreqs(numArr, asCounts = False):
     n = len(numArr)
-    if n == 0: return np.array([np.NaN]*4)
+    if n == 0:
+        if asCounts: return np.zeros(4, dtype=int)
+        else: return np.array([np.NaN]*4)
     else:
         if asCounts: return np.bincount(numArr, minlength=4)
         else: return 1.* np.bincount(numArr, minlength=4) / n
