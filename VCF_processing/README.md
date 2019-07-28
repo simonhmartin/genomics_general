@@ -53,7 +53,7 @@ bgzip > output.geno.gz
 * For parallel processing using tabix, the wrapper `parseVCFs.py` uses the contig lengths provided in the header of the VCF file. If you prefer to skip these, or if there is no header, you can provide a fasta index file using the `--fai` option.
 ___
 
-##Transfer VCF to a new coordinate system
+## Transfer VCF to a new coordinate system
 
 The script vcfChromTransfer.py takes as input VCF and [agp](https://www.ncbi.nlm.nih.gov/assembly/agp/AGP_Specification/) file and outputs a VCF with chromosome names and positions transferred to the new coordinate system.
 
