@@ -62,7 +62,7 @@ Output is a `.csv`. If you add `.gz` it will be gzipped.
 
 `-f phased` means that genotypes include phase information (but they don't necessarily need to actually be phased):
 ```
-scaffold1  1        A/A       G/G       G|A`
+scaffold1  1        A/A       G/G       G|A
 ``` 
 
 `-f pairs` is the same, but without the phase indicator:
