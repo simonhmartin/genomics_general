@@ -194,6 +194,7 @@ parser.add_argument("--asCounts", help="Return frequencies as counts", action='s
 #define ploidy if not 2
 parser.add_argument("--ploidy", help="Ploidy for each sample", action = "store", type=int, nargs="+")
 parser.add_argument("--ploidyFile", help="File with samples names and ploidy as columns", action = "store")
+parser.add_argument("--haploid", help="Alternative way to specify samples that are not diploid", action = "store", nargs="+")
 
 #optional missing data argument
 parser.add_argument("--minData", help="Minimum proportion of non-missing data per population", type=float, action = "store", default = 0, metavar = "proportion")
@@ -239,6 +240,9 @@ if args.ploidy is not None:
 elif args.ploidyFile is not None:
     with open(args.ploidyFile, "r") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
 else: ploidyDict = dict(zip(allInds,[2]*len(allInds)))
+
+if args.haploid:
+    for indName in args.haploid: ploidyDict[indName] = 1
 
 sampleData = genomics.SampleData(popNames = popNames, popInds = popInds, ploidyDict = ploidyDict)
 
