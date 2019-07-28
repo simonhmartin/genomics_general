@@ -283,8 +283,6 @@ if args.outgroup:
     if test or verbose: print >> sys.stderr, "outgroups:", " ".join(outgroup)
 else: outgroup = []
 
-prefix = args.prefix
-
 log = args.log
 
 threads = args.threads
@@ -302,18 +300,18 @@ bootstraps = args.bootstraps
 if args.genoFile: genoFile = gzip.open(args.genoFile, "r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r")
 else: genoFile = sys.stdin
 
-dataFile = open(prefix + ".data.tsv", "w")
+dataFile = open(args.prefix + ".data.tsv", "w")
 
 outHeads = ["scaffold","start","end","mid","sites","lnL"]
 if args.crossVal: outHeads.append("cv_lnL")
 
 dataFile.write("\t".join(outHeads) + "\n")
 
-treesFile = gzip.open(prefix + ".trees.gz", "w")
+treesFile = gzip.open(args.prefix + ".trees.gz", "w")
 
 outs = [dataFile, treesFile]
 
-for b in range(bootstraps): outs.append(gzip.open(prefix + ".BS" + str(b) + ".trees.gz", "w"))
+for b in range(bootstraps): outs.append(gzip.open(args.prefix + ".BS" + str(b) + ".trees.gz", "w"))
 
 #tmp dir for phyml work
 
