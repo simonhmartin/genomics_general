@@ -132,10 +132,11 @@ def parseHeaderLines(headerLines):
     output["contigLengths"] = {}
     for line in headerLines:
         if line.startswith("##contig"):
+            contigDataDict = dict([x.split("=") for x in re.split('<|>', line)[1].split(",")])
             elements = re.split('=|,|>', line)
-            output["contigs"].append(elements[2])
-            try: output["contigLengths"][elements[2]] = int(elements[4])
-            except: output["contigLengths"][elements[2]] = None
+            output["contigs"].append(contigDataDict["ID"])
+            try: output["contigLengths"][contigDataDict["ID"]] = int(contigDataDict["length"])
+            except: output["contigLengths"][contigDataDict["ID"]] = None
         
         if line.startswith("#CHROM"):
             output["mainHead"] = line
