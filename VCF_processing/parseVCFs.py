@@ -1,9 +1,8 @@
 #!/usr/bin/env python
 
-import argparse, gzip, sys
+import argparse, gzip, sys, subprocess
 import numpy as np
 import parseVCF
-import tabix
 
 from multiprocessing import Process, Queue
 from multiprocessing.queues import SimpleQueue
@@ -17,15 +16,21 @@ from time import sleep
     #region = chrom+":"+str(start)+"-"+str(end)  
     #return subprocess.Popen(['tabix',fileName, region], stdout=subprocess.PIPE, bufsize=1)
 
-#using pytabix 
-def tabixStream(fileName, chrom, start, end):
-    tb = tabix.open(fileName)
-    return tb.query(chrom, start, end)
+#improved tabix stream that fixes the bug where readining is terminated prematurely
+def tabixStream(fileName, region = None, chrom = None, start=None, end=None, header=False):
+    if not region: region = chrom+":"+str(start)+"-"+str(end)  
+    
+    if header:
+        p = subprocess.Popen(['tabix', '-h', fileName, region], stdout=subprocess.PIPE, bufsize=1, universal_newlines=True)
+    else:
+        p = subprocess.Popen(['tabix',fileName, region], stdout=subprocess.PIPE, bufsize=1, universal_newlines=True)
+    
+    return iter(p.communicate()[0].strip().split("\n"))
 
 def parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, skipIndels, missing, ploidy, outSep, verbose):
     n = len(fileNames)
     
-    sitesGenerators = [parseVCF.parseVcfSites(tabixStream(fileNames[x], scaffold, start, end), headData[x]["mainHeaders"]) for x in range(n)]
+    sitesGenerators = [parseVCF.parseVcfSites(tabixStream(fileNames[x], chrom=scaffold, start=start, end=end), headData[x]["mainHeaders"]) for x in range(n)]
     
     currentSites = []
     for x in range(n):
