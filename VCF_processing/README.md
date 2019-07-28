@@ -3,7 +3,7 @@
 ## Contents
 
 * [Parse VCF files](#parse-vcf-files)
-* [Transfer VCF to a new coordinate system](#parse-vcf-files)
+* [Transfer VCF to a new coordinate system](#Transfer-VCF-to-a-new-coordinate-system)
 
 ___
 
