@@ -28,14 +28,12 @@ This allows **multi-threaded processing**, *and* **processing and merging of mul
 
 #### Example commands:
 
-**Base script (single threaded, and therefore slow)
-**
+**Base script (single threaded, and therefore slow)**
 ```bash
 python parseVCF.py -i input.vcf.gz --skipIndels --minQual 30 --gtf flag=DP min=5 | bgzip > output.geno.gz
 ```
 
-**Wrapper script (multi threaded, and therefore faster)
-**
+**Wrapper script (multi threaded, and therefore faster)**
 ```bash
 python parseVCFs.py -i input1.vcf.gz -i input2.vcf.gz \
 --skipIndels --minQual 30 --gtf flag=DP min=5 max=100 --threads 10 |
@@ -57,9 +55,8 @@ ___
 
 The script vcfChromTransfer.py takes as input VCF and [agp](https://www.ncbi.nlm.nih.gov/assembly/agp/AGP_Specification/) file and outputs a VCF with chromosome names and positions transferred to the new coordinate system.
 
-#### Example commands:
+#### Example command:
 
-**Base script (single threaded, and therefore slow)
 **
 ```bash
 python vcfChromTransfer.py -v input.vcf.gz -a transfers.agp | bgzip > output.vcf.gz
