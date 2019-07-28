@@ -4,7 +4,7 @@
 
 ## Contents
 
-* [Parsing VCF files](#parsing-vcf-files)
+* [Processing VCF files](#processing-vcf-files)
 * [Diversity and divergence analyses in sliding windows](#diversity-and-divergence-analyses-in-sliding-windows)
 * [Distance matrix](#distance-matrix)
 * [ABBA-BABA statistics in sliding windows](#abba-baba-statistics-in-sliding-windows)
@@ -12,33 +12,19 @@
 
 ___
 
-## Parsing VCF files
+## Processing VCF files
 
 Most of my scripts use a processed `.vcf` format that I call `.geno`. This looks something like this:
 
 ```
-#CHOM      POS      ind1      ind2      ind3
+#CHROM      POS      ind1      ind2      ind3
 scaffold1  1        A/A       A/G       G|A
 scaffold1  1        N/N       T/T       T|C
 ```
 
 Missing data is denoted as `N`, and phased and unphased genotypes are shown conventionally with `|` and `/`.
 
-The script `parseVCF.py` in the `VCF_processing` directory, will convert vcf to this format. It has various options for filtering based on read depth, genotype quality or any other flag in the `FORMAT` column of the vcf.
-
-#### Example command:
-
-```bash
-python parseVCF.py -i input.vcf.gz --skipIndels --minQual 30 --gtf flag=DP min=5 | gzip > output.geno.gz
-```
-
-#### Notes
-
-* You can filter on any flag associated with the genotype, such as read depth (`DP`) and genotype likelihood (`PL`). Check the `FORMAT` column of your vcf file to see which flags are present. To add a genotype filter, add the argument `--gtf` followed by the flag title, minimum and/or maximum value, as in the example above.
-
-* By default the script outputs the genotype for each sample at each site. You can also output a different field, such as `DP`, as long as it is present in the `FORMAT` column of the vcf. e.g. `--field DP`
-
-* `minQual` refers to the `QUAL` column in the vcf, and not individual genotype qualities, for which you should use the `--gtf` argument.
+The script `parseVCF.py` in the [`VCF_processing`](https://github.com/simonhmartin/genomics_general/tree/master/VCF_processing) directory, will convert vcf to this format. It has various options for filtering based on read depth, genotype quality or any other flag in the `FORMAT` column of the vcf.
 
 ___
 
