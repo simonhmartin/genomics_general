@@ -2225,11 +2225,11 @@ class Intervals():
             tuples = [parseRegionText(r) for r in regions]
         if tuples is not None:
             self.chroms = np.array([t[0] for t in tuples])
-            self.starts = np.array([t[1] if len(t)>1 and t[1] is not None else 0 for t in tuples])
-            self.ends = np.array([t[2] if len(t)>2 and t[2] is not None else t[1] if len(t)>1 and t[1] is not None else np.inf for t in tuples])
+            self.starts = np.array([t[1] if len(t)>1 and t[1] is not None else 0 for t in tuples], dtype=float)
+            self.ends = np.array([t[2] if len(t)>2 and t[2] is not None else t[1] if len(t)>1 and t[1] is not None else np.inf for t in tuples], dtype=float)
         else:
-            self.chroms = np.array(chroms) if chroms is not None else np.repeat("", len(starts))
-            self.starts = np.array(starts) if starts is not None else np.repeat(0, len(chroms))
+            self.chroms = np.array(chroms, dtype=int) if chroms is not None else np.repeat("", len(starts))
+            self.starts = np.array(starts, dtype=int) if starts is not None else np.repeat(0, len(chroms))
             self.ends = np.array(ends) if ends is not None else np.array(starts) if starts is not None else np.repeat(np.inf, len(chroms))
             assert len(self.starts)==len(self.ends)==len(self.chroms)
     
