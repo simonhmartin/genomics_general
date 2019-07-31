@@ -325,13 +325,36 @@ elif args.inputType == "baseCounts":
     #assume geno file contains comma-separated counts of each base
     genoFileReader = genomics.GenoFileReader(inputFile, headerLine=args.header,
                                              scafCol=args.scafCol, posCol=args.posCol, firstSampleCol=args.firstSampleCol)
-    popNames = genoFileReader.names
+    if args.pop or args.FSpops:
+        
+        popNames = []
+        
+        if args.pop:
+            for pop in args.pop: popNames.append(pop[0])
+        
+        if args.FSpops:
+            for pop in [p for pops in args.FSpops for p in pops]:
+                if pop not in popNames: popNames.append(pop)
+    else:
+        popNames = genoFileReader.names
 
 else:
     #otherwise we assume only the target base is given in the input file
     genoFileReader = genomics.GenoFileReader(inputFile, headerLine=args.header,
                                              scafCol=args.scafCol, posCol=args.posCol, firstSampleCol=args.firstSampleCol, type=int)
-    popNames = genoFileReader.names
+    if args.pop or args.FSpops:
+        
+        popNames = []
+        
+        if args.pop:
+            for pop in args.pop: popNames.append(pop[0])
+        
+        if args.FSpops:
+            for pop in [p for pops in args.FSpops for p in pops]:
+                if pop not in popNames: popNames.append(pop)
+    else:
+        popNames = genoFileReader.names
+
 
 #if polarizing, assume last population is outgroup
 if (args.inputType == "genotypes" or args.inputType == "baseCounts") and args.polarized:
@@ -344,7 +367,7 @@ else:
 if subsample is not None:
     
     if len(subsample) == 1: subsample = subsample*len(inPopNames)
-    else: assert len(subsample) == len(inPopNames), "subsample list must match number of ingroup populations"
+    else: assert len(subsample) == len(inPopNames), "subsample list ({}) must match number of ingroup populations ({}).".format(len(subsample),len(inPopNames))
     
     subsampleDict = dict(zip(inPopNames, subsample))
     
