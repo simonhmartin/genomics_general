@@ -35,7 +35,7 @@ python parseVCF.py -i input.vcf.gz --skipIndels --minQual 30 --gtf flag=DP min=5
 
 **Wrapper script (multi threaded, and therefore faster)**
 **This script can also process multiple VCFs at once and merge them.**
-**WARNING: this script will fail to work correctly if you have duplicated positions in any VCF.**
+**WARNING: this script will automatically skip duplicated positions in any VCF.**
 
 ```bash
 python parseVCFs.py -i input1.vcf.gz -i input2.vcf.gz \
