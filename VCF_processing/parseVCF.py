@@ -157,16 +157,22 @@ def getHeadData(fileName):
     return parseHeaderLines(headLines)
 
 
-def parseVcfSites(lines, mainHeaders, precomp=True, precompMaxSize=10000):
+def parseVcfSites(lines, mainHeaders, precomp=True, precompMaxSize=10000, excludeDuplicates=False):
     if precomp:
         precompGenoData = {}
         precompGenoData["__maxSize__"] = precompMaxSize
         precompGenoData["__counter__"] = 0
     else: precompGenoData = None
     
+    if excludeDuplicates: lastChrom = lastPos = None
+    
     for elements in lines:
         if isinstance(elements, str): elements = elements.split()
         if elements[0][0] == "#": continue
+        if excludeDuplicates:
+            if elements[0] == lastChrom and elements[1] == lastPos: continue
+            lastChrom = elements[0]
+            lastPos = elements[1]
         yield VcfSite(elements=elements, headers=mainHeaders, precompGenoData=precompGenoData)
 
 def canFloat(string):

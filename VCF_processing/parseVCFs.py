@@ -30,7 +30,8 @@ def tabixStream(fileName, region = None, chrom = None, start=None, end=None, hea
 def parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, skipIndels, missing, ploidy, outSep, verbose):
     n = len(fileNames)
     
-    sitesGenerators = [parseVCF.parseVcfSites(tabixStream(fileNames[x], chrom=scaffold, start=start, end=end), headData[x]["mainHeaders"]) for x in range(n)]
+    sitesGenerators = [parseVCF.parseVcfSites(tabixStream(fileNames[x], chrom=scaffold, start=start, end=end),
+                                              headData[x]["mainHeaders"], excludeDuplicates=True) for x in range(n)]
     
     currentSites = []
     for x in range(n):
