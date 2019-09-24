@@ -1439,15 +1439,27 @@ def fh(p1,p2,p3,p4):
 
 
 def ABAA(p1,p2,p3,p4):
-    return ((1 - p1)*p2*(1-p3)*(1-p4) + p1*(1-p2)*p3*p4).sum()
+    return ((1 - p1)*p2*(1-p3)*(1-p4)).sum()
 
 def BAAA(p1,p2,p3,p4):
-    return (p1*(1 - p2)*(1-p3)*(1-p4) + (1-p1)*p2*p3*p4).sum()
+    return (p1*(1 - p2)*(1-p3)*(1-p4)).sum()
 
 def ABBA(p1,p2,p3,p4):
-    return ((1 - p1)*p2*p3*(1-p4) + p1*(1-p2)*(1-p3)*p4).sum()
+    return ((1 - p1)*p2*p3*(1-p4)).sum()
 
 def BABA(p1,p2,p3,p4):
+    return (p1*(1-p2)*p3*(1-p4)).sum()
+
+def ABAA_BABB(p1,p2,p3,p4):
+    return ((1 - p1)*p2*(1-p3)*(1-p4) + p1*(1-p2)*p3*p4).sum()
+
+def BAAA_ABBB(p1,p2,p3,p4):
+    return (p1*(1 - p2)*(1-p3)*(1-p4) + (1-p1)*p2*p3*p4).sum()
+
+def ABBA_BAAB(p1,p2,p3,p4):
+    return ((1 - p1)*p2*p3*(1-p4) + p1*(1-p2)*(1-p3)*p4).sum()
+
+def BABA_ABAB(p1,p2,p3,p4):
     return (p1*(1-p2)*p3*(1-p4) + (1-p1)*p2*(1-p3)*p4).sum()
 
 
