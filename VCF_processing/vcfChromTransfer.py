@@ -1,5 +1,6 @@
+#!/usr/bin/env python
 
-import sys, argparse, gzip, subprocess
+import sys, argparse, gzip, subprocess, string
 from collections import OrderedDict
 
 def newPos(pos, start=1, newStart=None, newEnd=None, reverse=False,):
@@ -24,6 +25,12 @@ def tabixStream(fileName, region = None, chrom = None, start=None, end=None, hea
     if iterable: return iter(p.communicate()[0].strip().split("\n"))
     else: return p.communicate()[0].strip().split("\n")
 
+
+#translation table for bases
+if sys.version_info>=(3,0):
+    complementTrans = str.maketrans("ACGT", "TGCA")
+else:
+    complementTrans = string.maketrans("ACGT", "TGCA")
 
 ##################################################
 
@@ -129,7 +136,11 @@ for t in transfers:
         fields = vcfLine.split("\t")
         assert fields[0] == chrom, "Something went wrong: Found chrom {} but expected chrom {}.".format(fields[0],chrom)
         fields[0] = newChrom
+        #get new position
         fields[1] = str(newPos(int(fields[1]), start=int(start), newStart=int(newStart), newEnd=int(newEnd), reverse=reverse))
+        #complement ref and alternate alleles
+        fields[3] = fields[3].translate(complementTrans)
+        fields[4] = fields[4].translate(complementTrans)
         outStream.write("\t".join(fields)+"\n")
 
 outStream.close()
