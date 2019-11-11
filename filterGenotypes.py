@@ -2,8 +2,13 @@
 
 import argparse, sys, gzip, string
 
-from multiprocessing import Process, Queue
-from multiprocessing.queues import SimpleQueue
+from multiprocessing import Process
+
+if sys.version_info>=(3,0):
+    from multiprocessing import SimpleQueue
+else:
+    from multiprocessing.queues import SimpleQueue
+
 from threading import Thread
 
 import genomics
@@ -22,7 +27,7 @@ def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,alleleOrde
     precompGTs = dict([(s, dict(),) for s in samples]) if precomp else None
     while True:
         podNumber,inPod = inQueue.get()
-        if verbose: print >> sys.stderr, "Pod", podNumber, "received for analysis."
+        if verbose: sys.stderr.write("Pod {} received for analysis.\n".format(podNumber))
         outPod = []
         lastScaf = None
         for lineData in inPod:
@@ -50,7 +55,8 @@ def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,alleleOrde
                 if thinDist: lastPos = int(objects[1])
             #if verbose: print >> sys.stderr, objects[0], objects[1], "passed: ", goodSite
         outQueue.put((podNumber,outPod))
-        if verbose: print >> sys.stderr, "Pod", podNumber, "analysed, sent to sorter."
+        if verbose: sys.stderr.write("Pod {} analysed; sent to sorter.\n".format(podNumber))
+
 
 
 
@@ -64,12 +70,12 @@ def sorter(doneQueue, writeQueue, verbose):
         podNumber, donePod = doneQueue.get()
         podsDone += 1
         if verbose:
-            print >> sys.stderr, "Sorter received pod", podNumber
+            sys.stderr.write("Sorter received pod {}\n".format(podNumber))
         if podNumber == expect:
             writeQueue.put((podNumber,donePod))
             podsSorted += 1
             if verbose:
-                print >> sys.stderr, "Pod", podNumber, "sent to writer"
+                sys.stderr.write("Pod {} sent to writer\n".format(podNumber))
             expect +=1
             #now check buffer for further results
             while True:
@@ -78,7 +84,7 @@ def sorter(doneQueue, writeQueue, verbose):
                     writeQueue.put((expect,donePod))
                     podsSorted += 1
                     if verbose:
-                        print >> sys.stderr, "Pod", expect, "sent to writer"
+                        sys.stderr.write("Pod {} sent to writer\n".format(expect))
                     expect +=1
                 except:
                     break
@@ -95,7 +101,7 @@ def writer(writeQueue, out):
     while True:
         podNumber, donePod = writeQueue.get()
         if verbose:
-            print >> sys.stderr, "\nWriter received pod", podNumber
+            sys.stderr.write("Writer received pod {}.\n".format(podNumber))
         for thing in donePod:
             lineNumber,outLine = thing
             out.write(outLine)
@@ -107,7 +113,7 @@ def writer(writeQueue, out):
 def checkStats():
     while True:
         sleep(10)
-        print >> sys.stderr, linesRead, "lines read,", podsQueued, "pods queued,", podsDone, "pods filtered,", podsSorted, "pods sorted,", podsWritten, "pods written,", linesWritten, "good lines written."
+        sys.stderr.write("{} lines read | {} pods queued | {} pods filtered | {} pods sorted | {} pods written | {} good lines written.\n".format(linesRead, podsQueued, podsDone, podsSorted, podsWritten, linesWritten))
 
 
 #########################################################################################################################
@@ -194,12 +200,12 @@ if args.excludeFile:
 
 if len(include) >= 1:
     include = set(include)
-    print >> sys.stderr, "\nIncluding", len(include), "contigs.\n"
+    sys.stderr.write("\nIncluding {} contigs.\n".format(len(include)))
 else: include = False
 
 if len(exclude) >= 1:
     exclude = set(exclude)
-    print >> sys.stderr, "\nExcluding", len(exclude), "contigs.\n"
+    sys.stderr.write("\nExcluding {} contigs.\n".format(len(exclude)))
 else: exclude = False
 
 
@@ -230,7 +236,7 @@ if args.pop:
         popDict[pop[0]] = [] if len(pop)==1 else pop[1].split(",")
     
     if args.popsFile:
-        with open(args.popsFile, "r") as pf: 
+        with open(args.popsFile, "rt") as pf: 
             for line in pf:
                 ind,pop = line.split()
                 if pop in popDict and ind not in popDict[pop]: popDict[pop].append(ind)
@@ -266,9 +272,9 @@ precomp = not args.noPrecomp
 
 if infile:
     if infile[-3:] == ".gz":
-        In = gzip.open(infile, "r")
+        In = gzip.open(infile, "rt")
     else:
-        In = open(infile, "r")
+        In = open(infile, "rt")
 else:
     In = sys.stdin
 
@@ -316,7 +322,7 @@ if args.ploidy is not None:
     assert len(ploidy) == len(samples), "Incorrect number of ploidy values supplied."
     ploidyDict = dict(zip(samples,ploidy))
 elif args.ploidyFile is not None:
-    with open(args.ploidyFile, "r") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
+    with open(args.ploidyFile, "rt") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
 else: ploidyDict = dict(zip(samples,[None]*len(samples)))
 
 if args.outputGenoFormat != "bases":
@@ -394,7 +400,7 @@ for line in In:
     if linesRead % podSize == 0:
         inQueue.put((podNumber,pod))
         if verbose:
-            print >> sys.stderr, "Pod", podNumber, "sent for analysis..."
+            sys.stderr.write("Pod {} sent for analysis...\n".format(podNumber))
         podNumber += 1
         podsQueued += 1
         pod = []
@@ -406,7 +412,7 @@ if len(pod) > 0:
   inQueue.put((podNumber,pod))
   podsQueued += 1
   if verbose:
-        print >> sys.stderr, "Pod", podNumber, "sent for analysis..."
+        sys.stderr.write("Pod {} sent for analysis...\n".format(podNumber))
 
 
 #Wait for analysis to finish

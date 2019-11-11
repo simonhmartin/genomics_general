@@ -184,7 +184,7 @@ else:
     assert not args.stepSize,"Step size does not apply for predefined windows."
     assert not args.include,"You cannot only include specific scaffolds if using predefined windows."
     assert not args.exclude,"You cannot exclude specific scaffolds if using predefined windows."
-    with open(args.windCoords,"r") as wc: windCoords = tuple([(x,int(y),int(z),) for x,y,z in [line.split()[:3] for line in wc]])
+    with open(args.windCoords,"rt") as wc: windCoords = tuple([(x,int(y),int(z),) for x,y,z in [line.split()[:3] for line in wc]])
 
 minSites = args.minSites
 if not minSites: minSites = windSize
@@ -214,7 +214,7 @@ if args.population is not None:
         else: popInds.append([])
 
     if args.popsFile:
-        with open(args.popsFile, "r") as pf: popDict = dict([ln.split() for ln in pf])
+        with open(args.popsFile, "rt") as pf: popDict = dict([ln.split() for ln in pf])
         for ind in popDict.keys():
             try: popInds[popNames.index(popDict[ind])].append(ind)
             except: pass
@@ -229,7 +229,7 @@ if args.samples is not None:
 
 #if populations and samples not specified, just get all sample names from file
 if len(allInds) == 0:
-    with gzip.open(args.genoFile, "r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r") as gf:
+    with gzip.open(args.genoFile, "rt") if args.genoFile.endswith(".gz") else open(args.genoFile, "rt") as gf:
         allInds = gf.readline().split()[2:]
 
 #if at this point there are no populations specified, we just make a singe population called "all"
@@ -242,7 +242,7 @@ if args.ploidy is not None:
     assert len(ploidy) == len(allInds), "Incorrect number of ploidy values supplied."
     ploidyDict = dict(zip(allInds,ploidy))
 elif args.ploidyFile is not None:
-    with open(args.ploidyFile, "r") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
+    with open(args.ploidyFile, "rt") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
 elif args.inferPloidy:
     ploidyDict = dict(zip(allInds,[None]*len(allInds)))
 else:
@@ -257,10 +257,10 @@ sampleData = genomics.SampleData(indNames = allInds, popNames = popNames, popInd
 
 #open files
 
-if args.genoFile: genoFile = gzip.open(args.genoFile, "r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r")
+if args.genoFile: genoFile = gzip.open(args.genoFile, "rt") if args.genoFile.endswith(".gz") else open(args.genoFile, "rt")
 else: genoFile = sys.stdin
 
-if args.outFile: outFile = gzip.open(args.outFile, "w") if args.outFile.endswith(".gz") else open(args.outFile, "w")
+if args.outFile: outFile = gzip.open(args.outFile, "wt") if args.outFile.endswith(".gz") else open(args.outFile, "wt")
 else: outFile = sys.stdout
 
 if not args.addWindowID: outFile.write("scaffold,start,end,mid,sites,")

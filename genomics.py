@@ -440,7 +440,7 @@ class GenomeSite:
         #or use genoDict, which is a dictionary with sample names as the keys. Again, all genotype formats accepted
         if not genoDict:
             assert genotypes is not None, "Either a genotypes dictionary or list must be specified."
-            if not sampleNames: sampleNames = map(str, range(len(genotypes)))
+            if not sampleNames: sampleNames = [str(x) for x in range(len(genotypes))]
             assert len(genotypes) == len(sampleNames), "Genotypes and sample names must be of equal length."
             self.sampleNames = sampleNames
             genoDict = dict(zip(sampleNames, genotypes))
@@ -533,8 +533,8 @@ class GenomeSite:
     def hets(self, samples=None):
         if not samples: samples = self.sampleNames
         sampAlleles = self.asList(mode = "alleles")
-        sampUniqueAlleles = map(set, sampAlleles)
-        nSampAlleles = np.array(map(len, sampUniqueAlleles))
+        sampUniqueAlleles = [set(alleles) for alleles in sampAlleles]
+        nSampAlleles = np.array([len(uniqueAlleles) for uniqueAlleles in sampUniqueAlleles])
         return 1.*sum(nSampAlleles == 2)/self.nonMissing()
     
     def nonMissing(self, prop=False):
@@ -738,7 +738,7 @@ def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAllel
     
     #if there are population-specific filters
     popNames = site.pops.keys()
-    if popNames >= 1:        
+    if len(popNames) >= 1:        
         for popName in popNames:
             if minPopCalls:
                 popCalls = sum([site.genotypes[sample].isMissing()==False for sample in site.pops[popName]])
@@ -747,7 +747,7 @@ def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAllel
         if fixed or minPopAlleles or maxPopAlleles:
             #if fixed all pops must have only one allele, but taken together must have more than one
             allelesByPop = [site.alleles(pop=popName) for popName in popNames]
-            if fixed and not (len(set(map(len, allelesByPop))) == 1 and
+            if fixed and not (len(set([len(alleles) for alleles in allelesByPop])) == 1 and
                               len(set([a for popAlleles in allelesByPop for a in popAlleles]))) > 1: return False
             
             #otherwise 
@@ -2117,7 +2117,7 @@ def makeAlnString(names=None, seqs=None, seqDict=None, outFormat="phylip", lineL
     if NtoGap: seqs = [seq.translate(missingtrans) for seq in seqs]
     output = []
     nSamp = len(names)
-    seqLen = max(map(len,seqs))
+    seqLen = max([len(seq) for seq in seqs])
     if lineLen: seqs = ["\n".join(subset(s,lineLen)) for s in seqs]
     if outFormat == "phylip":
         output.append(" " + str(nSamp) + " " + str(seqLen))

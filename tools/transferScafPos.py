@@ -42,15 +42,15 @@ parser.add_argument("--keepFails", help="Retain failed transfers in output file"
 args = parser.parse_args()
 
 if not args.inFile: inFile = sys.stdin
-else: inFile = gzip.open(args.inFile,"r") if args.inFile.endswith(".gz") else open(args.inFile,"r")
+else: inFile = gzip.open(args.inFile,"rt") if args.inFile.endswith(".gz") else open(args.inFile,"rt")
 
 if not args.outFile: outFile = sys.stdout
-else: outFile = gzip.open(args.outFile,"w") if args.outFile.endswith(".gz") else open(args.outFile,"w")
+else: outFile = gzip.open(args.outFile,"wt") if args.outFile.endswith(".gz") else open(args.outFile,"wt")
 
 if args.failFile:
-    failFile = gzip.open(args.failFile,"w") if args.failFile.endswith(".gz") else open(args.failFile,"w")
+    failFile = gzip.open(args.failFile,"wt") if args.failFile.endswith(".gz") else open(args.failFile,"wt")
 else:
-    failFile = open('/dev/null', 'w')
+    failFile = open('/dev/null', 'wt')
     if not args.keepFails:
         sys.stderr.write("\nWARNING: Failed transfers will not be shown. To catch them, specify a --failFile\n\n") 
 
@@ -72,7 +72,7 @@ if not args.transfersFile and not args.agpFile:
 transfers = {}
 
 if args.agpFile:
-    with open(args.agpFile, "r") as agpFile:
+    with open(args.agpFile, "rt") as agpFile:
         for line in agpFile:
             if not line.startswith("#"):
                 try:newScaf,newStart,newEnd,part,component,scaf,start,end,strand = line.split()
@@ -86,7 +86,7 @@ if args.agpFile:
                 except: pass
 
 else:
-    with open(args.transfersFile, "r") as transfersFile:
+    with open(args.transfersFile, "rt") as transfersFile:
         for line in transfersFile:
             if not line.startswith("#"):
                 try:newScaf,newStart,newEnd,scaf,start,end,strand = line.split()

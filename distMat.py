@@ -8,8 +8,13 @@ import itertools
 
 import genomics
 
-from multiprocessing import Process, Queue
-from multiprocessing.queues import SimpleQueue
+from multiprocessing import Process
+
+if sys.version_info>=(3,0):
+    from multiprocessing import SimpleQueue
+else:
+    from multiprocessing.queues import SimpleQueue
+
 from threading import Thread
 from time import sleep
 
@@ -57,32 +62,32 @@ def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, mi
 
 '''a function that watches the result queue and sorts results. This should be a generic funcion regardless of the result, as long as the first object is the result number, and this increases consecutively.'''
 def sorter(resultQueue, writeQueue, verbose):
-  global resultsReceived
-  sortBuffer = {}
-  expect = 0
-  while True:
-    resNumber,result,isGood = resultQueue.get()
-    resultsReceived += 1
-    if verbose:
-      print >> sys.stderr, "Sorter received result", resNumber
-    if resNumber == expect:
-      writeQueue.put((resNumber,result,isGood))
-      if verbose:
-        print >> sys.stderr, "Result", resNumber, "sent to writer"
-      expect +=1
-      #now check buffer for further results
-      while True:
-        try:
-          result,isGood = sortBuffer.pop(str(expect))
-          writeQueue.put((expect,result,isGood))
-          if verbose:
-            print >> sys.stderr, "Result", expect, "sent to writer"
-          expect +=1
-        except:
-          break
-    else:
-      #otherwise this line is ahead of us, so add to buffer dictionary
-      sortBuffer[str(resNumber)] = (result,isGood)
+    global resultsReceived
+    sortBuffer = {}
+    expect = 0
+    while True:
+        resNumber,result,isGood = resultQueue.get()
+        resultsReceived += 1
+        if verbose:
+            sys.stderr.write("Sorter received result {}\n".format(resNumber))
+        if resNumber == expect:
+            writeQueue.put((resNumber,result,isGood))
+            if verbose:
+                sys.stderr.write("Result {} sent to writer\n".format(resNumber))
+            expect +=1
+            #now check buffer for further results
+            while True:
+                try:
+                    result,isGood = sortBuffer.pop(str(expect))
+                    writeQueue.put((expect,result,isGood))
+                    if verbose:
+                        sys.stderr.write("Result {} sent to writer\n".format(expect))
+                    expect +=1
+                except:
+                    break
+        else:
+            #otherwise this line is ahead of us, so add to buffer dictionary
+            sortBuffer[str(resNumber)] = (result,isGood)
 
 '''a writer function that writes the sorted result. This is also generic'''
 def writer(writeQueue, outs, writeFailedWindows=False):
@@ -91,7 +96,7 @@ def writer(writeQueue, outs, writeFailedWindows=False):
     while True:
         resNumber,result,isGood = writeQueue.get()
         if verbose:
-            print >> sys.stderr, "Writer received result", resNumber
+            sys.stderr.write("Writer received result {}".format(resNumber))
         if isGood or writeFailedWindows:
             for key in result.keys():
                 outs[key].write(result[key])
@@ -103,7 +108,7 @@ def writer(writeQueue, outs, writeFailedWindows=False):
 def checkStats():
   while True:
     sleep(10)
-    print >> sys.stderr, windowsQueued, "windows queued", resultsReceived, "results received", resultsWritten, "results written."
+    sys.stderr.write("{} windows queued | {} results received | {} results written.\n".format(windowsQueued,resultsReceived,resultsWritten))
 
 
 ####################################################################################################################
@@ -178,7 +183,7 @@ elif args.windType == "predefined":
     assert not args.stepSize,"Step size does not apply for predefined windows."
     assert not args.include,"You cannot only include specific scaffolds if using predefined windows."
     assert not args.exclude,"You cannot exclude specific scaffolds if using predefined windows."
-    with open(args.windCoords,"r") as wc: windCoords = tuple([(x,int(y),int(z),) for x,y,z in [line.split()[:3] for line in wc]])
+    with open(args.windCoords,"rt") as wc: windCoords = tuple([(x,int(y),int(z),) for x,y,z in [line.split()[:3] for line in wc]])
 else:
     minSites = 1
 
@@ -195,7 +200,7 @@ if args.samples is not None:
     allInds = list(set(allInds + args.samples))
 
 if len(allInds) == 0:
-    with gzip.open(args.genoFile, "r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r") as gf:
+    with gzip.open(args.genoFile, "rt") if args.genoFile.endswith(".gz") else open(args.genoFile, "rt") as gf:
         allInds = gf.readline().split()[2:]
 
 if args.ploidy is not None:
@@ -203,7 +208,7 @@ if args.ploidy is not None:
     assert len(ploidy) == len(allInds), "Incorrect number of ploidy values supplied."
     ploidyDict = dict(zip(allInds,ploidy))
 elif args.ploidyFile is not None:
-    with open(args.ploidyFile, "r") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
+    with open(args.ploidyFile, "rt") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
 elif args.inferPloidy:
     ploidyDict = dict(zip(allInds,[None]*len(allInds)))
 else:
@@ -218,7 +223,7 @@ sampleData = genomics.SampleData(indNames = allInds, ploidyDict = ploidyDict)
 
 #open files
 
-if args.genoFile != None: genoFile = gzip.open(args.genoFile, "r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r")
+if args.genoFile != None: genoFile = gzip.open(args.genoFile, "rt") if args.genoFile.endswith(".gz") else open(args.genoFile, "rt")
 else: genoFile = sys.stdin
 
 outs = {}
@@ -241,7 +246,7 @@ else:
 if args.exclude:
     scafsFile = open(args.exclude, "rU")
     scafsToExclude = [line.rstrip() for line in scafsFile.readlines()]
-    print >> sys.stderr, len(scafsToExclude), "scaffolds will be excluded."
+    sys.stderr.write("{} scaffolds will be excluded.\n".format(len(scafsToExclude)))
     scafsFile.close()
 else:
     scafsToExclude = None
@@ -249,7 +254,7 @@ else:
 if args.include:
     scafsFile = open(args.include, "rU")
     scafsToInclude = [line.rstrip() for line in scafsFile.readlines()]
-    print >> sys.stderr, len(scafsToInclude), "scaffolds will be analysed."
+    sys.stderr.write("{} scaffolds will be analysed.".format(len(scafsToInclude)))
     scafsFile.close()
 else:
     scafsToInclude = None
@@ -279,7 +284,7 @@ for x in range(args.threads):
                                                     args.includeSameWithSame, args.outFormat, args.roundTo, outputWindowData,args.addWindowID))
     worker.daemon = True
     worker.start()
-    print >> sys.stderr, "started worker", x
+    sys.stderr.write("started worker {}\n".format(x))
 
 
 '''thread for sorting results'''
@@ -336,12 +341,9 @@ genoFile.close()
 
 for out in outs.values(): out.close()
 
-print >> sys.stderr, str(windowsQueued), "windows were tested.\n"
-print >> sys.stderr, str(resultsWritten), "results were written.\n"
+sys.stderr.write("{} windows were tested.\n".format(str(windowsQueued)))
+sys.stderr.write("{} results were written.\n".format(str(resultsWritten)))
 
-print >> sys.stderr, "\nDone."
+sys.stderr.write("\n### Done. ###\n")
 
 sys.exit()
-
-
-
