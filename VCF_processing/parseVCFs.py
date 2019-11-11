@@ -4,8 +4,13 @@ import argparse, gzip, sys, subprocess
 import numpy as np
 import parseVCF
 
-from multiprocessing import Process, Queue
-from multiprocessing.queues import SimpleQueue
+from multiprocessing import Process
+
+if sys.version_info.major < 3:
+    from multiprocessing.queues import SimpleQueue
+else:
+    from multiprocessing import SimpleQueue
+
 from threading import Thread
 
 from time import sleep
@@ -30,12 +35,14 @@ def tabixStream(fileName, region = None, chrom = None, start=None, end=None, hea
 def parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, skipIndels, missing, ploidy, outSep, verbose):
     n = len(fileNames)
     
+    if verbose: sys.stderr.write("Attempting to extract {}:{}-{}.\n".format(scaffold,start,end))
+    
     sitesGenerators = [parseVCF.parseVcfSites(tabixStream(fileNames[x], chrom=scaffold, start=start, end=end),
                                               headData[x]["mainHeaders"], excludeDuplicates=True) for x in range(n)]
     
     currentSites = []
     for x in range(n):
-        try: currentSites.append(sitesGenerators[x].next())
+        try: currentSites.append(next(sitesGenerators[x]))
         except:
             sys.stderr.write("WARNING empty window: " + fileNames[x] + " " + scaffold + " " + str(start) + "-" + str(end) + "\n")
             currentSites.append(None) 
@@ -45,18 +52,18 @@ def parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, 
     sitesConsidered = 0
     linesParsed = 0
     
-    for pos in xrange(start,end+1):
+    for pos in range(start,end+1):
         sitesConsidered+=1
         filesRepresented = 0
         outObjects = [scaffold, str(pos)]
-        for x in xrange(n):
+        for x in range(n):
             if currentSites[x] and currentSites[x].POS == pos:
                 #get genotypes and add to output
                 if not skipIndels or currentSites[x].getType() is not "indel":
                     genotypes = currentSites[x].getGenotypes(gtFilters,asList=True,withPhase=True,missing=missing,allowOnly="ACGT",keepPartial=False)
                     filesRepresented += 1
                 else: genotypes = ["/".join([missing]*ploidy)]*headData[x]["nSamples"]
-                try: currentSites[x] = sitesGenerators[x].next()
+                try: currentSites[x] = next(sitesGenerators[x])
                 except: currentSites[x] = None
             else:
                 #if not a match, add Ns for this file, and dont read next line
@@ -196,21 +203,7 @@ if len(exclude) >= 1:
     exclude = set(exclude)
     sys.stderr.write("{} contigs will be excluded.".format(len(exclude)))
 
-gtFilters = []
-if args.gtf:
-    for gtf in args.gtf:
-        try:
-            gtfDict = dict([tuple(i.split("=")) for i in gtf])
-            for key in gtfDict.keys():
-                assert key in ["flag","min","max", "siteTypes", "gtTypes", "samples"]
-            for key in ["siteTypes", "gtTypes", "samples"]:
-                if key in gtfDict: gtfDict[key] = gtfDict[key].split(",")
-            gtfDict["min"] = float(gtfDict["min"]) if "min" in gtfDict else -np.inf
-            gtfDict["max"] = float(gtfDict["max"]) if "max" in gtfDict else np.inf
-            gtFilters.append(gtfDict)
-        except:
-            raise ValueError("Bad genotype filter specification. See help.")
- 
+gtFilters = [parseVCF.parseGenotypeFilterArg(gtf) for gtf in args.gtf] if args.gtf else []
 
 verbose = args.verbose
 ##########################################################################################################################
