@@ -10,14 +10,14 @@ import numpy as np
 def GTtype(alleles):
     alleleSet = set(alleles)
     if len(alleleSet) > 1: return "Het"
-    elif alleleSet[0] == ".": return "Missing"
-    elif alleleSet[0] == "0": return "HomRef"
+    elif "0" in alleleSet: return "HomRef"
+    elif "." in alleleSet: return "Missing"
     else: return "HomAlt"
 
 
 class VcfSite:
     
-    __slots__ = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'REF_ALT', 'QUAL', 'FILTER', 'INFO', 'sampleNames', 'genoData']
+    __slots__ = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'REF_ALT', 'QUAL', 'FILTER', 'INFO', 'sampleNames', 'genoData', "alleleDict"]
     
     def __init__(self, elements=None, line=None, headers=None, headerLine=None, precompGenoData=None):
         assert((elements != None or line != None) and (headers != None or headerLine != None))
@@ -70,8 +70,11 @@ class VcfSite:
             if ("gtTypes" in gtFilter and GTtype(genoData["alleles"]) not in gtFilter["gtTypes"]): continue
             if ("samples" in gtFilter and sample not in gtFilter["samples"]): continue
             #now check that it passes
-            try: passed = gtFilter["min"] <= float(genoData[gtFilter["flag"]]) <= gtFilter["max"]
-            except: passed = False
+            #might be a single value, nut could be several separated by commas. So will split in case
+            values = np.array(genoData[gtFilter["flag"]].split(","), dtype=float)
+            passed = np.all(gtFilter["min"] <= values) and np.all(values <= gtFilter["max"])
+            #try: passed = gtFilter["min"] <= float(genoData[gtFilter["flag"]]) <= gtFilter["max"]
+            #except: passed = False
             if not passed: break
         
         if ploidy is None: ploidy=len(genoData["alleles"])
@@ -126,11 +129,11 @@ class VcfSite:
         return fields
 
 
-def parseHeaderLines(headerLines):
+def parseHeaderLines(fileObj):
     output = {}
     output["contigs"] = []
     output["contigLengths"] = {}
-    for line in headerLines:
+    for line in fileObj:
         if line.startswith("##contig"):
             contigDataDict = dict([x.split("=") for x in re.split('<|>', line)[1].split(",")])
             elements = re.split('=|,|>', line)
@@ -144,17 +147,14 @@ def parseHeaderLines(headerLines):
             output["sampleNames"] = line.split()[9:]
             output["nSamples"] = len(output["sampleNames"])
             output["mainHeaders"] = elements
+            break
     
     return output
 
 
 def getHeadData(fileName):
-    headLines = []
-    with gzip.open(fileName, "r") if fileName.endswith(".gz") else open(fileName, "r") as fileObj:
-        for line in fileObj:
-            if line.startswith("#"): headLines.append(line)
-            else: break
-    return parseHeaderLines(headLines)
+    with gzip.open(fileName, "rt") if fileName.endswith(".gz") else open(fileName, "rt") as fileObj:
+        return parseHeaderLines(fileObj)
 
 
 def parseVcfSites(lines, mainHeaders, precomp=True, precompMaxSize=10000, excludeDuplicates=False):
@@ -180,6 +180,17 @@ def canFloat(string):
     except: return False
     return True
 
+def parseGenotypeFilterArg(arg):
+    try:
+        gtfDict = dict([tuple(i.split("=")) for i in arg])
+        for key in gtfDict.keys():
+            assert key in ["flag","min","max", "siteTypes", "gtTypes", "samples"]
+        for key in ["siteTypes", "gtTypes", "samples"]:
+            if key in gtfDict: gtfDict[key] = gtfDict[key].split(",")
+        gtfDict["min"] = float(gtfDict["min"]) if "min" in gtfDict else -np.inf
+        gtfDict["max"] = float(gtfDict["max"]) if "max" in gtfDict else np.inf
+        return gtfDict
+    except: raise ValueError("Bad genotype filter specification. See help.")
 
 ###############################################################################################################
 if __name__ == "__main__":
@@ -243,26 +254,13 @@ if __name__ == "__main__":
         exclude = set(exclude)
         sys.stderr.write("{} contigs will be excluded.".format(len(exclude)))
     
-    gtFilters = []
-    if args.gtf:
-        for gtf in args.gtf:
-            try:
-                gtfDict = dict([tuple(i.split("=")) for i in gtf])
-                for key in gtfDict.keys():
-                    assert key in ["flag","min","max", "siteTypes", "gtTypes", "samples"]
-                for key in ["siteTypes", "gtTypes", "samples"]:
-                    if key in gtfDict: gtfDict[key] = gtfDict[key].split(",")
-                gtfDict["min"] = float(gtfDict["min"]) if "min" in gtfDict else -np.inf
-                gtfDict["max"] = float(gtfDict["max"]) if "max" in gtfDict else np.inf
-                gtFilters.append(gtfDict)
-            except:
-                raise ValueError("Bad genotype filter specification. See help.")
+    gtFilters = [parseGenotypeFilterArg(gtf) for gtf in args.gtf] if args.gtf else []
     
     ##########################################################################################################################
 
     ### open files
 
-    if args.inFile: inFile = gzip.open(args.inFile, "r") if args.inFile.endswith(".gz") else open(args.inFile, "r")
+    if args.inFile: inFile = gzip.open(args.inFile, "rt") if args.inFile.endswith(".gz") else open(args.inFile, "rt")
     else: inFile = sys.stdin
 
 
@@ -270,7 +268,7 @@ if __name__ == "__main__":
     else: outFile = sys.stdout
     
     #header data
-    headData = getHeadData(args.inFile)
+    headData = parseHeaderLines(inFile)
     
     #check specified samples are in first file. Otherwise use this entire set    
     if samples:
@@ -278,7 +276,7 @@ if __name__ == "__main__":
     else: samples = headData["sampleNames"]
     
     if args.ploidyFile is not None:
-        with open(args.ploidyFile, "r") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
+        with open(args.ploidyFile, "rt") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
     else:
         ploidy = args.ploidy if len(args.ploidy) != 1 else args.ploidy*len(samples)
         assert len(ploidy) == len(samples), "Incorrect number of ploidy values supplied."
