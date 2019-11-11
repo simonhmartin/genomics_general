@@ -35,24 +35,24 @@ parser.add_argument("-s", "--samples", help="Analysis threads", action = "store"
 args = parser.parse_args()
 
 if args.genoFile:
-    genoFile = gzip.open(args.genoFile,"r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r")
+    genoFile = gzip.open(args.genoFile,"rt") if args.genoFile.endswith(".gz") else open(args.genoFile, "rt")
 else: genoFile = sys.stdin
 
 if args.outFile:
-    outFile = gzip.open(args.outFile,"w") if args.outFile.endswith(".gz") else open(args.outFile, "w")
+    outFile = gzip.open(args.outFile,"wt") if args.outFile.endswith(".gz") else open(args.outFile, "wt")
 else: outFile = sys.stdout
 
 
 if args.reference:
     sys.stderr.write("Parsing reference. This could take a while...\n")
     try:
-        with open(args.reference + ".fai","r") as fai:
+        with open(args.reference + ".fai","rt") as fai:
             scafs_lengths = [line.split()[:2] for line in fai]
     except:
         sys.stderr.write("WARNING: Could not parse fai file, vcf header will not contain contig entries...\n")
         scafs_lengths = None
     
-    with gzip.open(args.reference,"r") if args.reference.endswith(".gz") else open(args.reference, "r") as ref:
+    with gzip.open(args.reference,"rt") if args.reference.endswith(".gz") else open(args.reference, "rt") as ref:
             refDict = dict(zip(*genomics.parseFasta(ref.read())))
 
 else: refDict = None
@@ -81,13 +81,13 @@ outFile.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t" + "\t".j
 
 linesDone = 0
 
-print >> sys.stderr, "Converting...\n"
+sys.stderr.write("Converting...\n")
 
 for siteData in genoFileReader.siteBySite():
     outFile.write(makeVCFline(siteData["scaffold"], siteData["position"],
                               siteData["GTs"], namesToUse, refDict, args.genoFormat) + "\n")
     linesDone += 1
-    if linesDone % 100000 == 0: print >> sys.stderr, linesDone, "lines converted...\n"
+    if linesDone % 100000 == 0: sys.stderr.write("{} lines converted...\n".format(linesDone))
 
 genoFile.close()
 outFile.close()
