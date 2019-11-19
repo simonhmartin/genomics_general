@@ -535,7 +535,7 @@ class GenomeSite:
         sampAlleles = self.asList(mode = "alleles")
         sampUniqueAlleles = [set(alleles) for alleles in sampAlleles]
         nSampAlleles = np.array([len(uniqueAlleles) for uniqueAlleles in sampUniqueAlleles])
-        return 1.*sum(nSampAlleles == 2)/self.nonMissing()
+        return 1.*(nSampAlleles > 1).sum()/self.nonMissing()
     
     def nonMissing(self, prop=False):
         present = sum([~self.genotypes[sample].isMissing() for sample in self.sampleNames])
@@ -723,7 +723,7 @@ def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAllel
         # minor allele count
         if minVarCount and sorted(binBaseFreqs(numBases, asCounts = True))[-2] < minVarCount: return False
         #check maximum heterozygots?
-        if maxHet and site.hets(samples) > maxHet: return False
+        if maxHet != None and site.hets(samples) > maxHet: return False
         #if there is a frequency cutoff
         if minFreq and not minFreq <= sorted(binBaseFreqs(numBases))[-2]: return False
         if maxFreq and not sorted(binBaseFreqs(numBases))[-2] <= maxFreq: return False
