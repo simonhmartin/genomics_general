@@ -71,8 +71,10 @@ class VcfSite:
             if ("samples" in gtFilter and sample not in gtFilter["samples"]): continue
             #now check that it passes
             #might be a single value, nut could be several separated by commas. So will split in case
-            values = np.array(genoData[gtFilter["flag"]].split(","), dtype=float)
-            passed = np.all(gtFilter["min"] <= values) and np.all(values <= gtFilter["max"])
+            try:
+                values = np.array(genoData[gtFilter["flag"]].split(","), dtype=float)
+                passed = np.all(gtFilter["min"] <= values) and np.all(values <= gtFilter["max"])
+            except: passed = False
             #try: passed = gtFilter["min"] <= float(genoData[gtFilter["flag"]]) <= gtFilter["max"]
             #except: passed = False
             if not passed: break
