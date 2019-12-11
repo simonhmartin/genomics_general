@@ -7,6 +7,7 @@ To output a single sequence for each geno file add argument --dontSplit
 import genomics
 import sys, argparse, gzip, subprocess
 from collections import defaultdict
+import numpy as np
 
 def tabixStream(fileName, region = None, chrom = None, start=None, end=None, header=False):
     if not region: region = chrom+":"+str(start)+"-"+str(end)  
@@ -27,6 +28,7 @@ parser.add_argument("-o", "--outFile", help="Output sequence file", action = "st
 parser.add_argument("--outFormat", help="Output file format", action = "store", choices = ["fasta","phylip"], default="phylip")
 parser.add_argument("-g", "--genoFile", help="Genotype file", action='store', required = True)
 parser.add_argument("-s", "--samples", help="Samples to include", nargs="+", action='store')
+parser.add_argument("-t", "--targets", help="Target mRNA names", nargs="+", action='store')
 parser.add_argument('--split', help="Split sequences into haplotypes", dest='split', action='store_true')
 parser.add_argument('--no-split', help="Do not split sequences", dest='split', action='store_false')
 #define ploidy if not 2
@@ -35,13 +37,13 @@ parser.set_defaults(split=True)
 
 args = parser.parse_args()
 
-with gzip.open(args.gff,"r") if args.gff.endswith(".gz") else open(args.gff,"r") as gff: gffLines = gff.readlines()
+with gzip.open(args.gff,"rt") if args.gff.endswith(".gz") else open(args.gff,"rt") as gff: gffLines = gff.readlines()
 
 sys.stderr.write("Parsing gene data from gff\n")
-geneData = genomics.parseGenes(gffLines)
+geneData = genomics.parseGenes(gffLines, targets=args.targets)
 
 if not args.outFile: outFile = sys.stdout
-else: outFile = gzip.open(args.outFile,"w") if args.outFile.endswith(".gz") else open(args.outFile,"w")
+else: outFile = gzip.open(args.outFile,"wt") if args.outFile.endswith(".gz") else open(args.outFile,"wt")
 
 ###################################################
 
@@ -59,6 +61,13 @@ for scaffold in geneData.keys():
         
         sys.stderr.write("    Extracting mRNA {}: {}, {} exons\n".format(mRNA, region, geneData[scaffold][mRNA]["exons"]))
         
+        #get the start and end positions of CDSs in order
+        strand = geneData[scaffold][mRNA]['strand']
+        order = np.argsort(geneData[scaffold][mRNA]["cdsStarts"])
+        if strand == "-": order = order[::-1]
+        cdsStarts = [geneData[scaffold][mRNA]["cdsStarts"][x] for x in order]
+        cdsEnds = [geneData[scaffold][mRNA]["cdsEnds"][x] for x in order]
+        
         #for each exon we exytract the sequence for all individuals
         #and build a dictionary of position and genotype for each individual
         for i in range(geneData[scaffold][mRNA]["exons"]):
@@ -67,8 +76,8 @@ for scaffold in geneData.keys():
             
             genoStream = tabixStream(args.genoFile,
                                      chrom = scaffold,
-                                     start = geneData[scaffold][mRNA]["cdsStarts"][i],
-                                     end = geneData[scaffold][mRNA]["cdsEnds"][i], header=True)
+                                     start = cdsStarts[i],
+                                     end = cdsEnds[i], header=True)
             
             reader = genomics.GenoFileReader(genoStream, splitPhased=args.split, ploidy=args.ploidy)
             
@@ -80,12 +89,12 @@ for scaffold in geneData.keys():
             
             #now update if there is data for this window
             for siteData in reader.siteBySite(asDict=True if args.samples else False):
-                GTs = [siteData["GTs"][name] for name in args.seqNames] if args.seqNames else siteData["GTs"]
-                siteGTdict[siteData["position"]] = [genomics.complement(gt) for gt in GTs] if geneData[scaffold][mRNA]['strand'] == "-" else GTs
+                GTs = [siteData["GTs"][name] for name in args.samples] if args.samples else siteData["GTs"]
+                siteGTdict[siteData["position"]] = [genomics.complement(gt) for gt in GTs] if strand == "-" else GTs
         
-        cdsPositions = genomics.CDSpositions(geneData[scaffold][mRNA]['cdsStarts'],
-                                             geneData[scaffold][mRNA]['cdsEnds'],
-                                             geneData[scaffold][mRNA]['strand'])
+        cdsPositions = genomics.CDSpositions(cdsStarts,
+                                             cdsEnds,
+                                             strand)
         
         cdsSeqs = [[siteGTdict[position][i] for position in cdsPositions] for i in range(nSeqs)]
         
