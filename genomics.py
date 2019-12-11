@@ -159,32 +159,29 @@ def degeneracy(pos1Alleles,pos2Alleles,pos3Alleles):
 
 
 #function takes gff file and retrieves coordinates of all CDSs for all mRNAs
-def parseGenes(gff):
+def parseGenes(gff, targets=None):
     #little function to parse the info line
     makeInfoDict = lambda infoString: dict([x.split("=") for x in infoString.strip(";").split(";")])
-    output = {}
+    output = defaultdict(dict)
     for gffLine in gff:
         if len(gffLine) > 1 and gffLine[0] != "#":
             gffObjects = gffLine.strip().split("\t")
             #store all mRNA and CDS data for the particular scaffold
             scaffold = gffObjects[0]
-            if scaffold not in output.keys():
-                output[scaffold] = {}
             if gffObjects[2] == "mRNA" or gffObjects[2] == "mrna" or gffObjects[2] == "MRNA":
                 #we've found a new mRNA
                 try: mRNA = makeInfoDict(gffObjects[-1])["ID"]
                 except:
                     raise ValueError("Problem parsing mRNA information: " + gffObjects[-1]) 
-                if mRNA not in output[scaffold].keys():
+                if not targets or mRNA in targets:
                     output[scaffold][mRNA] = {'start':int(gffObjects[3]), 'end':int(gffObjects[4]), 'strand':gffObjects[6], 'exons':0, 'cdsStarts':[], 'cdsEnds':[]}
             elif gffObjects[2] == "CDS" or gffObjects[2] == "cds":
                 #we're reading CDSs for an existing mRNA
                 mRNA = makeInfoDict(gffObjects[-1])["Parent"]
-                start = int(gffObjects[3])
-                end = int(gffObjects[4])
-                output[scaffold][mRNA]['exons'] += 1
-                output[scaffold][mRNA]['cdsStarts'].append(start)
-                output[scaffold][mRNA]['cdsEnds'].append(end)
+                if not targets or mRNA in targets:
+                    output[scaffold][mRNA]['exons'] += 1
+                    output[scaffold][mRNA]['cdsStarts'].append(int(gffObjects[3]))
+                    output[scaffold][mRNA]['cdsEnds'].append(int(gffObjects[4]))
     return(output)
 
 
