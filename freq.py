@@ -3,9 +3,14 @@
 import argparse, sys, gzip, random
 import numpy as np
 
-from multiprocessing import Process, Queue
-from multiprocessing.queues import SimpleQueue
 from threading import Thread
+
+from multiprocessing import Process
+
+if sys.version_info>=(3,0):
+    from multiprocessing import SimpleQueue
+else:
+    from multiprocessing.queues import SimpleQueue
 
 import genomics
 
@@ -35,7 +40,7 @@ def freqs_wrapper(inQueue, resultQueue, headerLine, genoFormat, sampleData, targ
 
         
         window = genomics.parseGenoFile(fileSlice, headerLine, names=sampleData.indNames)
-                
+        
         #make alignment objects
         aln = genomics.genoToAlignment(window.seqDict(), sampleData, genoFormat = genoFormat)
         popAlns = dict(zip(sampleData.popNames, [aln.subset(groups=[pop]) for pop in sampleData.popNames]))
@@ -67,7 +72,7 @@ def freqs_wrapper(inQueue, resultQueue, headerLine, genoFormat, sampleData, targ
                 #otherwise get minor allele.
                 baseColumns = np.array([genomics.minorAllele(aln.numArray[:,i][aln.nanMask[:,i]]) for i in xrange(aln.l)]).reshape([aln.l,1])
             
-            goodSites = np.apply_along_axis(lambda(x): ~np.any(np.isnan(x)),1,baseColumns)
+            goodSites = np.apply_along_axis(lambda x: ~np.any(np.isnan(x)),1,baseColumns)
             
             #get freqs per pop
             popFreqs = []
@@ -121,11 +126,11 @@ def sorter(doneQueue, writeQueue, verbose, nWorkerThreads):
             break #this is the way of telling everything we're done
         resultsReceived += 1
         if verbose:
-            print >> sys.stderr, "Sorter received slice", sliceNumber
+            sys.stderr.write("Sorter received slice {}\n".format(sliceNumber))
         if sliceNumber == expect:
             writeQueue.put((sliceNumber,results))
             if verbose:
-                print >> sys.stderr, "Block", sliceNumber, "sent to writer"
+                sys.stderr.write("Slice {} sent to writer\n".format(sliceNumber))
             expect +=1
             #now check buffer for further results
             while True:
@@ -133,7 +138,7 @@ def sorter(doneQueue, writeQueue, verbose, nWorkerThreads):
                     results = sortBuffer.pop(str(expect))
                     writeQueue.put((expect,results))
                     if verbose:
-                        print >> sys.stderr, "Block", expect, "sent to writer"
+                        sys.stderr.write("Slice {} sent to writer\n".format(expect))
                     expect +=1
                 except:
                     break
@@ -152,7 +157,7 @@ def writer(writeQueue, out, verbose):
         #check if we're done
         if sliceNumber == -1: break
         if verbose:
-            print >> sys.stderr, "\nWriter received slice", sliceNumber
+            sys.stderr.write("Writer received slice {}\n".format(sliceNumber))
         for outLine in results:
             out.write(outLine + "\n")
             linesWritten += 1
@@ -162,7 +167,7 @@ def writer(writeQueue, out, verbose):
 def checkStats():
     while True:
         sleep(10)
-        print >> sys.stderr, slicesQueued, "slices queued | ", resultsReceived, "slices analysed | ", resultsWritten, "slices written |", linesWritten, "lines written"
+        sys.stderr.write("{} slices queued | {} slices analysed | {} slices written | {} lines written\n".format(slicesQueued,resultsReceived,resultsWritten,linesWritten))
 
 def lineReader(fileObj):
     line = fileObj.readline()
@@ -224,7 +229,7 @@ for p in args.population:
     else: popInds.append([])
 
 if args.popsFile:
-    with open(args.popsFile, "r") as pf: popDict = dict([ln.split() for ln in pf])
+    with open(args.popsFile, "rt") as pf: popDict = dict([ln.split() for ln in pf])
     for ind in popDict.keys():
         try: popInds[popNames.index(popDict[ind])].append(ind)
         except: pass
@@ -238,7 +243,7 @@ if args.ploidy is not None:
     assert len(ploidy) == len(allInds), "Incorrect number of ploidy values supplied."
     ploidyDict = dict(zip(allInds,ploidy))
 elif args.ploidyFile is not None:
-    with open(args.ploidyFile, "r") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
+    with open(args.ploidyFile, "rt") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
 else: ploidyDict = dict(zip(allInds,[2]*len(allInds)))
 
 if args.haploid:
@@ -252,15 +257,15 @@ sampleData = genomics.SampleData(popNames = popNames, popInds = popInds, ploidyD
 #open files
 
 if args.genoFile:
-    if args.genoFile[-3:] == ".gz": genoFile = gzip.open(args.genoFile, "r")
-    else: genoFile = open(args.genoFile, "r")
+    if args.genoFile[-3:] == ".gz": genoFile = gzip.open(args.genoFile, "rt")
+    else: genoFile = open(args.genoFile, "rt")
 else: genoFile = sys.stdin
 
 headerLine= genoFile.readline()
 
 if args.outFile:
-    if args.outFile[-3:] == ".gz": outFile = gzip.open(args.outFile, "w")
-    else: outFile = open(args.outFile, "w")
+    if args.outFile[-3:] == ".gz": outFile = gzip.open(args.outFile, "wt")
+    else: outFile = open(args.outFile, "wt")
 else: outFile = sys.stdout
 
 outFile.write("scaffold\tposition\t")
