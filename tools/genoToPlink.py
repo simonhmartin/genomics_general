@@ -22,7 +22,7 @@ args = parser.parse_args()
 
 
 if args.genoFile:
-    genoFile = gzip.open(args.genoFile,"r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r")
+    genoFile = gzip.open(args.genoFile,"rt") if args.genoFile.endswith(".gz") else open(args.genoFile, "rt")
 else:
     assert args.prefix != None, "Please povide a prefix for the ouput files"
     genoFile = sys.stdin
@@ -58,7 +58,7 @@ prefix = args.prefix if args.prefix else args.genoFile.rsplit(".", 1)[0]
 sys.stderr.write("Writing PED file...\n")
 
 #write sequences for each sample
-with open(prefix + ".ped" , "w") as outPed:
+with open(prefix + ".ped" , "wt") as outPed:
     for name in scafWindows[0].names:
         outPed.write(" ".join(["0", name, "0 0 0 0 "]))
         outPed.write(" ".join(sampleSeqs[name]) + "\n")
@@ -66,7 +66,7 @@ with open(prefix + ".ped" , "w") as outPed:
 sys.stderr.write("Writing MAP file...\n")
 
 #write map file
-with open(prefix + ".map" , "w") as outMap:
+with open(prefix + ".map" , "wt") as outMap:
     for scafWindow in scafWindows:
         for pos in scafWindow.positions:
             outMap.write("{} {} 0 {}\n".format(scafWindow.scaffold, pos, pos))
@@ -74,6 +74,6 @@ with open(prefix + ".map" , "w") as outMap:
 if args.makeFAM:
     sys.stderr.write("Writing FAM file...\n")
     #write fam file
-    with open(args.FAMprefix if args.FAMprefix else prefix + ".fam" , "w") as outFam:
+    with open(args.FAMprefix if args.FAMprefix else prefix + ".fam" , "wt") as outFam:
         for name in names:
             outFam.write("0 {} 0 0 0 0\n".format(name))
