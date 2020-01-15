@@ -20,12 +20,12 @@ parser.add_argument("--randomPhase", help="Randomize phase for fused sequences",
 args = parser.parse_args()
 
 if args.seqFile:
-    if args.seqFile[-3:] == ".gz": seqFile = gzip.open(args.seqFile, "r")
+    if args.seqFile[-3:] == ".gz": seqFile = gzip.open(args.seqFile, "rt")
     else: seqFile = open(args.seqFile, "r")
 else: seqFile = sys.stdin
 
 if args.genoFile:
-    if args.genoFile[-3:] == ".gz": genoFile = gzip.open(args.genoFile, "w")
+    if args.genoFile[-3:] == ".gz": genoFile = gzip.open(args.genoFile, "wt")
     else: genoFile = open(args.genoFile, "w")
 else: genoFile = sys.stdout
 
@@ -68,12 +68,12 @@ if not multi:
     
     if args.mode == "samples":
         genoFile.write("#CHROM\tPOS\t" + "\t".join(seqNames) + "\n")
-        for x in xrange(len(seqs[0])): genoFile.write(args.chrom + "\t" + str(x+1) + "\t" + "\t".join([s[x] for s in seqs]) + "\n")
+        for x in range(len(seqs[0])): genoFile.write(args.chrom + "\t" + str(x+1) + "\t" + "\t".join([s[x] for s in seqs]) + "\n")
     
     elif args.mode == "contigs":
         genoFile.write("#CHROM\tPOS\t" + args.name + "\n")
         for y in range(len(seqNames)):
-            for x in xrange(len(seqs[y])): genoFile.write(seqNames[y] + "\t" + str(x+1) + "\t" + seqs[y][x] + "\n")
+            for x in range(len(seqs[y])): genoFile.write(seqNames[y] + "\t" + str(x+1) + "\t" + seqs[y][x] + "\n")
 
 else:
     #otherwise we output each set as a contig, with each sequence as a sample
@@ -95,7 +95,7 @@ else:
     genoFile.write("#CHROM\tPOS\t" + "\t".join(seqNames) + "\n")
     for i,seqs in enumerate(_seqs_):
         contigName = args.chrom if args.merge else args.chrom + str(i)
-        for x in xrange(len(seqs[0])): genoFile.write(contigName + "\t" + str(x+1) + "\t" + "\t".join([s[x] for s in seqs]) + "\n")
+        for x in range(len(seqs[0])): genoFile.write(contigName + "\t" + str(x+1) + "\t" + "\t".join([s[x] for s in seqs]) + "\n")
 
 #############################
 

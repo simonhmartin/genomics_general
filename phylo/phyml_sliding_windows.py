@@ -3,9 +3,15 @@
 import argparse, sys, os, gzip, random, tempfile
 import numpy as np
 
-from multiprocessing import Process, Queue
-from multiprocessing.queues import SimpleQueue
 from threading import Thread
+
+from multiprocessing import Process
+
+if sys.version_info>=(3,0):
+    from multiprocessing import SimpleQueue
+else:
+    from multiprocessing.queues import SimpleQueue
+
 from time import sleep
 
 #add parent directory to path in case genomics.py is there instead of on the path
@@ -22,25 +28,25 @@ def phymlTree(seqArray, seqNames, model, opt, phyml, prefix = "", tmpDir = None,
     localName = tempAln.name.rsplit("/",1)[1]
     with tempAln as tA: tA.write(genomics.makeAlnString(seqNames,seqArray))
     phymlCommand = " ".join([phyml,"--input", tempAln.name,"--model", model, "-o", opt, "-b 0", ">>", log])
-    if test: print >> sys.stderr, "phyml command:\n", phymlCommand
+    if test: sys.stderr.write("phyml command:\n" + phymlCommand + "\n")
     os.system(phymlCommand)
     #try retrieve the result  
     try:
-        with open(tempAln.name + "_phyml_tree.txt", "r") as treeFile: tree = treeFile.readline().strip()
+        with open(tempAln.name + "_phyml_tree.txt", "rt") as treeFile: tree = treeFile.readline().strip()
     except:
         try:
-            with open(tempAln.name + "_phyml_tree", "r") as treeFile: tree = treeFile.readline().strip()
+            with open(tempAln.name + "_phyml_tree", "rt") as treeFile: tree = treeFile.readline().strip()
         except:
             if verbose:
                 sys.stderr.write("Tree not found at " + tempAln.name + "_phyml_tree.txt\n")
             tree = "NA"
     try:
-        with open(tempAln.name + "_phyml_stats.txt", "r") as statsFile:
+        with open(tempAln.name + "_phyml_stats.txt", "rt") as statsFile:
             stats = statsFile.read().split()
             lnL = stats[stats.index("Log-likelihood:")+1]
     except:
         try:
-            with open(tempAln.name + "_phyml_stats", "r") as statsFile:
+            with open(tempAln.name + "_phyml_stats", "rt") as statsFile:
                 stats = statsFile.read().split()
                 lnL = stats[stats.index("Log-likelihood:")+1]
         except:
@@ -70,7 +76,7 @@ def phymlCrossVal(seqArray0, seqArray1, indNames, model, opt, phyml, prefix = ""
     os.system(phymlCommand)
     #retrieve
     try:
-        with open(tempAln1.name + "_phyml_stats.txt", "r") as statsFile:
+        with open(tempAln1.name + "_phyml_stats.txt", "rt") as statsFile:
             stats = statsFile.read().split()
             lnL1 = float(stats[stats.index("Log-likelihood:")+1])
     except: lnL1 = np.NaN
@@ -83,7 +89,7 @@ def phymlCrossVal(seqArray0, seqArray1, indNames, model, opt, phyml, prefix = ""
     os.system(phymlCommand)
     #retrieve
     try:
-        with open(tempAln0.name + "_phyml_stats.txt", "r") as statsFile:
+        with open(tempAln0.name + "_phyml_stats.txt", "rt") as statsFile:
             stats = statsFile.read().split()
             lnL0 = float(stats[stats.index("Log-likelihood:")+1])
     except: lnL0 = np.NaN
@@ -101,7 +107,7 @@ def phyml_wrapper(windowQueue, resultQueue, windType, model, opt, outgroup, phym
     while True:
         windowNumber,window = windowQueue.get()
         Nsites = window.seqLen()
-        if test or verbose: print >> sys.stderr, "Window", windowNumber, "received for analysis, length:", Nsites
+        if test or verbose: sys.stderr.write("Window {} received for analysis, length: {}\n".format(windowNumber,Nsites))
         if windType == "coordinate" or windType == "predefined": scaf,start,end,mid = (window.scaffold, window.limits[0], window.limits[1], window.midPos())
         else: scaf,start,end,mid = (window.scaffold, window.firstPos(), window.lastPos(), window.midPos())
         prefix = scaf + "_" + str(start) + "_" + str(end) + "_"
@@ -113,7 +119,8 @@ def phyml_wrapper(windowQueue, resultQueue, windType, model, opt, outgroup, phym
                     if seqName in outgroup: seqName +="*"
             
             sitesPerInd = aln.seqNonNan()
-            if min(sitesPerInd) >= minPerInd and (minSNPs is None or len(aln.varSites(indices=np.array([i for i in range(aln.N) if aln.sampleNames[i] not in outgroup]))) >= minSNPs):
+            if min(sitesPerInd) >= minPerInd and (minSNPs is None or
+                                                  len(aln.varSites(indices=np.array([i for i in range(aln.N) if aln.sampleNames[i] not in outgroup]))) >= minSNPs):
                 if maxLDphase: aln = genomics.maxLDphase(aln)
                 #if enough sites get tree
                 tree,lnL = phymlTree(aln.array,aln.names,model,opt,phyml,prefix,tmpDir=tmpDir, test = test, log = log)
@@ -152,10 +159,10 @@ def sorter(resultQueue, writeQueue, verbose):
     while True:
         resNumber,result = resultQueue.get()
         resultsReceived += 1
-        if verbose: print >> sys.stderr, "Sorter received result", resNumber
+        if verbose: sys.stderr.write("Sorter received result " + str(resNumber))
         if resNumber == expect:
             writeQueue.put((resNumber,result,))
-            if verbose: print >> sys.stderr, "Result", resNumber, "sent to writer"
+            if verbose: sys.stderr.write("Result {} sent to writer".format(resNumber))
             expect +=1
             #now check buffer for further results
             while True:
@@ -163,7 +170,7 @@ def sorter(resultQueue, writeQueue, verbose):
                 except: break
                 #if we get here we've found the one we want in the buffer
                 writeQueue.put((expect,result))
-                if verbose: print >> sys.stderr, "Result", expect, "sent to writer"
+                if verbose: sys.stderr.write("Result {} sent to writer".format(expect))
                 expect +=1
         else:
             #otherwise this line is ahead of us, so add to buffer dictionary
@@ -176,7 +183,7 @@ def writer(writeQueue, outs):
     global resultsHandled
     while True:
         resNumber,result = writeQueue.get()
-        if verbose: print >> sys.stderr, "Writer received result", resNumber
+        if verbose: sys.stderr.write("Writer received result {}\n".format(resNumber))
         for x in range(len(outs)): outs[x].write(result[x] + "\n")
         resultsWritten += 1
         resultsHandled += 1
@@ -185,8 +192,7 @@ def writer(writeQueue, outs):
 def checkStats():
     while True:
         sleep(10)
-        print >> sys.stderr, windowsQueued, "windows queued | ", resultsReceived, "results received | ", resultsWritten, "results written."
-
+        sys.stderr.write("\n{} windows queued | {} results received | {} results written.\n".format(windowsQueued, resultsReceived, resultsWritten))
 
 ####################################################################################################################
 
@@ -264,23 +270,23 @@ else:
     assert not args.stepSize,"Step size does not apply for predefined windows."
     assert not args.include,"You cannot only include specific scaffolds if using predefined windows."
     assert not args.exclude,"You cannot exclude specific scaffolds if using predefined windows."
-    with open(args.windCoords,"r") as wc: windCoords = tuple([(x,int(y),int(z),) for x,y,z in [line.split()[:3] for line in wc]])
+    with open(args.windCoords,"rt") as wc: windCoords = tuple([(x,int(y),int(z),) for x,y,z in [line.split()[:3] for line in wc]])
 
 minSites = args.minSites
 if not minSites: minSites = windSize
 
-minPerInd = args.minPerInd
+minPerInd = args.minPerInd if args.minPerInd else minSites
 
 
 if args.individuals: indNames = args.individuals.split(",")
 elif args.indFile:
-    with open(args.indFile, "r") as indFile:
+    with open(args.indFile, "rt") as indFile:
         indNames = [name.strip() for name in indFile.readlines()]
 else: indNames = None
 
 if args.outgroup:
     outgroup = args.outgroup.split(",")
-    if test or verbose: print >> sys.stderr, "outgroups:", " ".join(outgroup)
+    if test or verbose: sys.stderr.write("outgroups:" + " ".join(outgroup) + "\n")
 else: outgroup = []
 
 log = args.log
@@ -297,26 +303,26 @@ bootstraps = args.bootstraps
 
 #open files
 
-if args.genoFile: genoFile = gzip.open(args.genoFile, "r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r")
+if args.genoFile: genoFile = gzip.open(args.genoFile, "rt") if args.genoFile.endswith(".gz") else open(args.genoFile, "rt")
 else: genoFile = sys.stdin
 
-dataFile = open(args.prefix + ".data.tsv", "w")
+dataFile = open(args.prefix + ".data.tsv", "wt")
 
 outHeads = ["scaffold","start","end","mid","sites","lnL"]
 if args.crossVal: outHeads.append("cv_lnL")
 
 dataFile.write("\t".join(outHeads) + "\n")
 
-treesFile = gzip.open(args.prefix + ".trees.gz", "w")
+treesFile = gzip.open(args.prefix + ".trees.gz", "wt")
 
 outs = [dataFile, treesFile]
 
-for b in range(bootstraps): outs.append(gzip.open(args.prefix + ".BS" + str(b) + ".trees.gz", "w"))
+for b in range(bootstraps): outs.append(gzip.open(args.prefix + ".BS" + str(b) + ".trees.gz", "wt"))
 
 #tmp dir for phyml work
 
 tmpDir = tempfile.mkdtemp(prefix="phyml_tmp", dir=args.tmp)
-print >> sys.stderr, "\nTemporary Phyml files will be stored in", tmpDir
+if test or verbose: sys.stderr.write("\nTemporary Phyml files will be stored in {}\n".format(tmpDir))
 
 ############################################################################################################################################
 
@@ -325,18 +331,18 @@ print >> sys.stderr, "\nTemporary Phyml files will be stored in", tmpDir
 
 if args.exclude:
     scafsToExclude = args.exclude.split(",")
-    print >> sys.stderr, len(scafsToExclude), "scaffolds will be excluded."
+    sys.stderr.write("{} scaffolds will be excluded.".format(len(scafsToExclude)))
 elif args.excludeFile:
-    with open(args.excludeFile, "rU") as scafsFile: scafsToExclude = [line.rstrip() for line in scafsFile]
-    print >> sys.stderr, len(scafsToExclude), "scaffolds will be excluded."
+    with open(args.excludeFile, "rt") as scafsFile: scafsToExclude = [line.rstrip() for line in scafsFile]
+    sys.stderr.write("{} scaffolds will be excluded.".format(len(scafsToExclude)))
 else: scafsToExclude = None
 
 if args.include:
     scafsToInclude = args.include.split(",")
-    print >> sys.stderr, len(scafsToInclude), "scaffolds will be analysed."
+    sys.stderr.write("{} scaffolds will be analysed.".format(len(scafsToInclude)))
 elif args.includeFile:
-    with open(args.includeFile, "rU") as scafsFile: scafsToInclude = [line.rstrip() for line in scafsFile]
-    print >> sys.stderr, len(scafsToInclude), "scaffolds will be analysed."
+    with open(args.includeFile, "rt") as scafsFile: scafsToInclude = [line.rstrip() for line in scafsFile]
+    sys.stderr.write("{} scaffolds will be analysed.".format(len(scafsToInclude)))
 else: scafsToInclude = None
 
 
@@ -366,7 +372,7 @@ for x in range(threads):
                                                    args.minSNPs, args.maxLDphase, bootstraps, args.crossVal, test,))
     worker.daemon = True
     worker.start()
-    print >> sys.stderr, "started worker", x
+    if test or verbose: sys.stderr.write("started worker {}\n".format(x))
     
 
 '''thread for sorting results'''
@@ -403,11 +409,11 @@ for window in windowGenerator:
     #simpleque has no max, so to make sure we haven't gotten ahead of ourselves, we compare windowsQueued to resultsReceived
     while windowsQueued - resultsReceived >= 50:
         sleep(10)
-        if test or verbose: print >> sys.stderr, "Waiting for queue to clear..."
+        if test or verbose: sys.stderr.write("Waiting for queue to clear...\n")
     
     if test or verbose:
         if test: sleep(0.5)
-        print >> sys.stderr, "Sending window", windowsQueued, "to queue. Length:", window.seqLen()
+        sys.stderr.write("Sending window {} to queue. Length: {}\n".format(windowsQueued, window.seqLen()))
     
     windowQueue.put((windowsQueued,window))
     windowsQueued += 1
@@ -415,7 +421,7 @@ for window in windowGenerator:
 
 ############################################################################################################################################
 
-print >> sys.stderr, "\nWriting final results...\n"
+sys.stderr.write("\nWriting final results...\n")
 while resultsHandled < windowsQueued:
   sleep(1)
 
@@ -423,10 +429,8 @@ sleep(5)
 
 for o in outs: o.close()
 
-print >> sys.stderr, str(windowsQueued), "windows were analysed.\n"
-print >> sys.stderr, str(resultsWritten), "results were written.\n"
-
-print "\nDone."
+sys.stderr.write(str(windowsQueued) + " windows were tested.\n")
+sys.stderr.write(str(resultsWritten) + " results were written.\n")
 
 if not test: os.rmdir(tmpDir)
 

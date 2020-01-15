@@ -281,9 +281,9 @@ else:
 
 if outfile:
     if outfile[-3:] == ".gz":
-        Out = gzip.open(outfile, "w")
+        Out = gzip.open(outfile, "wt")
     else:
-        Out = open(outfile, "w")
+        Out = open(outfile, "wt")
 else:
     Out = sys.stdout
 
