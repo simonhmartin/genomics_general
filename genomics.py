@@ -238,9 +238,10 @@ def countStops(cds, includeTerminal=False):
 ########### some general list manipulation code
 
 #subset list into smaller lists
-def subset(things,subLen):
+def subset(things,subLen,asLists=False):
     starts = range(0,len(things),subLen)
     ends = [start+subLen for start in starts]
+    if asLists: return [list(things[starts[i]:ends[i]]) for i in range(len(starts))]
     return [things[starts[i]:ends[i]] for i in range(len(starts))]
 
 #similar to above, but can have variable sizes of smaller lists, or can specify the number of chunks
