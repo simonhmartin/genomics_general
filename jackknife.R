@@ -41,6 +41,20 @@ get_jackknife_sd <- function(block_indices, FUN, ...){
         }
     }
 
-
-
-
+block_jackknife <- function(block_indices, FUN, ...){
+    n_blocks <- length(block_indices)
+    args = list(...)
+    overall_mean <- FUN(...)
+    if (is.null(dim(args[1])) == TRUE){
+        pseudovalues <- sapply(1:n_blocks, function(i) overall_mean*n_blocks - do.call(FUN, lapply(args, function(a) a[-block_indices[[i]]]))*(n_blocks-1))
+        }
+    else{
+        pseudovalues <- sapply(1:n_blocks, function(i) overall_mean*n_blocks - do.call(FUN, lapply(args, function(a) a[-block_indices[[i]],]))*(n_blocks-1))
+        }
+    
+    mean <- mean(pseudovalues)
+    
+    std_dev <- sd(pseudovalues)
+    
+    list(mean=mean, std_dev=std_dev)
+    }
