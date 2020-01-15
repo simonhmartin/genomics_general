@@ -356,9 +356,13 @@ else:
         popNames = genoFileReader.names
 
 
+sys.stderr.write("\nPopulations:\n")
+sys.stderr.write(" ".join(popNames) + "\n")
+
 #if polarizing, assume last population is outgroup
 if (args.inputType == "genotypes" or args.inputType == "baseCounts") and args.polarized:
     inPopNames = popNames[:-1]
+    sys.stderr.write("\nFrequencies will be polarized assuming outgroup is {}\n".format(popNames[-1]))
 else:
     inPopNames = popNames
 
