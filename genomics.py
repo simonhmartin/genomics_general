@@ -443,7 +443,7 @@ class GenomeSite:
             self.sampleNames = sampleNames
             genoDict = dict(zip(sampleNames, genotypes))
         else:
-            self.sampleNames = sorted(genoDict.keys())
+            self.sampleNames = sampleNames if sampleNames is not None else sorted(genoDict.keys())
         self.contig = contig
         self.position = position
         self.pops = popDict
@@ -1002,6 +1002,13 @@ class Alignment:
         sampleAlleles = [[set(self.array[sidx,i][self.nanMask[sidx,i]]) for sidx in sampleIndices] for i in range(self.l)]
         if asList: return sampleAlleles
         else: return [dict(zip(sampleNames,sampleAlleles[i])) for i in range(self.l)]
+    
+    def LDmatrix(self, stat="r2"):
+        LDmat = np.zeros(shape=(self.l,self.l))
+        for x in range(self.l):
+            for y in range(x,self.l):
+                LDmat[x,y] = LDmat[y,x] = LD(self.numArray[:,x],self.numArray[:,y])[stat]
+        return LDmat
 
 
 def genoToAlignment(seqDict, sampleData=None, genoFormat = "diplo", positions = None):
