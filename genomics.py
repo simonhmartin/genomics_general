@@ -298,7 +298,7 @@ def uniqueIndices(things, preserveOrder = False, asDict=False):
 class Genotype:
     __slots__ = ['geno', 'genoFormat', 'ploidy', 'forcePloidy', 'alleles', 'phase', 'numAlleles']
     
-    def __init__(self, geno, genoFormat, ploidy = None, forcePloidy=False):
+    def __init__(self, geno, genoFormat, ploidy = None, forcePloidy=False, partialToMissing=False):
         if genoFormat == "phased":
             self.alleles = list(geno)[::2]
             self.phase = geno[1] if len(geno) > 1 and len(geno)%2 == 1 else "/"
@@ -321,6 +321,8 @@ class Genotype:
                         else: self.alleles = ["N"]*ploidy
                 else: raise ValueError("Ploidy doesn't match number of alleles")
         else: ploidy = len(self.alleles)
+        
+        if partialToMissing and "N" in self.alleles: self.alleles = ["N"]*ploidy
         
         self.ploidy = ploidy
         
@@ -433,7 +435,7 @@ def makePhasedNames(names,ploidy=2):
 class GenomeSite:
     
     def __init__(self, genoDict = None, genotypes = None, sampleNames = None, contig = None, position = 0, popDict = {},
-                 genoFormat = None, ploidyDict = None, forcePloidy=False, precompGTs=None, addToPrecomp=True):
+                 genoFormat = None, ploidyDict = None, forcePloidy=False, partialToMissing=False, precompGTs=None, addToPrecomp=True):
         #genotypes is a list of genotypes as strings, lists or tuples in any format. e.g. ['AT', 'W', 'T|A', ('A','T)]
         #or use genoDict, which is a dictionary with sample names as the keys. Again, all genotype formats accepted
         if not genoDict:
@@ -458,7 +460,7 @@ class GenomeSite:
             #if not, compute gentype normally
             else:
                 self.genotypes[sample] = Genotype(genoDict[sample], genoFormat=genoFormat,
-                                                  ploidy = self.ploidy[sample],forcePloidy=forcePloidy)
+                                                  ploidy = self.ploidy[sample],forcePloidy=forcePloidy, partialToMissing=partialToMissing)
                 
                 #add to precomputed
                 if precompGTs and addToPrecomp:
@@ -526,7 +528,7 @@ class GenomeSite:
     
     def changeGeno(self, sample, newGeno, genoFormat="phased"):
         self.genotypes[sample] = Genotype(newGeno, genoFormat=genoFormat,
-                                          ploidy = self.ploidy[sample],forcePloidy=forcePloidy)
+                                          ploidy = self.ploidy[sample],forcePloidy=forcePloidy, partialToMissing=partialToMissing)
     
     def hets(self, samples=None):
         if not samples: samples = self.sampleNames
@@ -745,8 +747,8 @@ def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAllel
         if fixed or minPopAlleles or maxPopAlleles:
             #if fixed all pops must have only one allele, but taken together must have more than one
             allelesByPop = [site.alleles(pop=popName) for popName in popNames]
-            if fixed and not (len(set([len(alleles) for alleles in allelesByPop])) == 1 and
-                              len(set([a for popAlleles in allelesByPop for a in popAlleles]))) > 1: return False
+            if fixed and not (set([len(alleles) for alleles in allelesByPop]) == {1} and
+                              len(set([a for popAlleles in allelesByPop for a in popAlleles])) > 1): return False
             
             #otherwise 
             if minPopAlleles or maxPopAlleles:
@@ -982,6 +984,13 @@ class Alignment:
     def seqNonNan(self, prop = False):
         if prop: return np.mean(self.nanMask, axis=1)
         return np.sum(self.nanMask, axis=1)
+    
+    def pairNonNan(self):
+        self._pairNonNan_ = np.zeros((self.N,self.N))
+        for i in range(self.N - 1):
+            for j in range(i + 1, self.N):
+                self._pairNonNan_[i,j] = self._pairNonNan_[j,i] = np.sum(self.nanMask[i,:] & self.nanMask[j,:])
+        return self._pairNonNan_
     
     def siteFreqs(self, sites=None, asCounts=False):
         if sites is None: sites = range(self.l)
