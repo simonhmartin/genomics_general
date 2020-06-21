@@ -7,13 +7,13 @@ import numpy as np
 
 import genomics
 
-def nanmin(a):
-    try: return numbers[i,:][nanMask[i,:]].min()
-    except: return np.NaN
+#def nanmin(numbers):
+    #try: return numbers[i,:][nanMask[i,:]].min()
+    #except: return np.NaN
 
-def nanmax(a):
-    try: return numbers[i,:][nanMask[i,:]].max()
-    except: return np.NaN
+#def nanmax(numbers):
+    #try: return numbers[i,:][nanMask[i,:]].max()
+    #except: return np.NaN
 
 ####################################################################################################################
 
@@ -131,7 +131,7 @@ for window in windowGenerator:
     #if its the first window, get the headings and write
     if n == 0:
         for name in window.names:
-            outFile.write(","+",".join([name + "_mean",name + "_median", name + "_max", name + "_min", name + "_sd", name + "_sum"]))
+            outFile.write(","+",".join([name + "_mean",name + "_median", name + "_min", name + "_max", name + "_sd", name + "_sum"]))
         outFile.write("\n")
     
     if windType == "coordinate" or windType == "predefined":
@@ -147,8 +147,8 @@ for window in windowGenerator:
         
         outFile.write(",".join([",".join([str(x) for x in [numbers[i,:][nanMask[i,:]].mean(),
                                                            np.median(numbers[i,:][nanMask[i,:]]),
-                                                           nanmin(numbers[i,:][nanMask[i,:]]),
-                                                           nanmax(numbers[i,:][nanMask[i,:]]),
+                                                           np.min(numbers[i,:][nanMask[i,:]]),
+                                                           np.max(numbers[i,:][nanMask[i,:]]),
                                                            np.std(numbers[i,:][nanMask[i,:]]),
                                                            np.sum(numbers[i,:][nanMask[i,:]])]]) for i in range(window.n)]))
     
