@@ -12,10 +12,28 @@ def parseFasta(string):
     seqs = [s[s.index("\n"):].replace("\n","").replace(" ","") for s in splitString]
     return (names,seqs)
 
-seqtrans = string.maketrans("ACGTKMRYNacgtkmryn", "TGCAMKYRNtgcamkyrn")
+#translation tables - method epends on version
 
-def revTrans(seq):
-    return seq.translate(seqtrans)[::-1]
+if sys.version_info>=(3,0):
+    #translation for conversion of missing bases to gaps
+    missingtrans = str.maketrans("Nn", "--")
+    #translation table for bases
+    complementTrans = str.maketrans("ACGTKMRYVHBDN", "TGCAMKYRBDVHN")
+else:
+    #translation for conversion of missing bases to gaps
+    missingtrans = string.maketrans("Nn", "--")
+    #translation table for bases
+    complementTrans = string.maketrans("ACGTKMRYVHBDN", "TGCAMKYRBDVHN")
+
+complementDict = dict(zip(list("ACGTKMRYVHBDN"), list("TGCAMKYRBDVHN")))
+
+def complement(seq):
+    if type(seq) == str: return seq.translate(complementTrans)
+    else: return [complementDict[a] for a in seq]
+
+def revComplement(seq):
+    if type(seq) == str: return seq.translate(complementTrans)[::-1]
+    else: return [complementDict[a] for a in seq[::-1]]
 
 def subset(things,subLen):
     starts = range(0,len(things),subLen)
@@ -65,8 +83,8 @@ pieces = {}
 newScafs = []
 
 if args.agpFile:
-    with open(args.transfersFile, "r") as transfersFile:
-        for line in transfersFile:
+    with open(args.agpFile, "r") as agpFile:
+        for line in agpFile:
             if not line.startswith("#"):
                 try:newScaf,newStart,newEnd,part,component,scaf,start,end,strand = line.split()
                 except:
@@ -94,6 +112,7 @@ else:
                                                                             {"scaf":scaf, "start":int(start), "end":int(end),"strand":strand,
                                                                             "newScaf":newScaf,"newStart":int(newStart),"newEnd":int(newEnd)})])])
                 except: pass
+
 
 sys.stderr.write("{} new scaffolds to be made.\n".format(len(newScafs)))
 
