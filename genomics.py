@@ -159,25 +159,32 @@ def degeneracy(pos1Alleles,pos2Alleles,pos3Alleles):
 
 
 #function takes gff file and retrieves coordinates of all CDSs for all mRNAs
-def parseGenes(gff, targets=None):
+def parseGenes(lines, fmt="gff3", targets=None):
     #little function to parse the info line
-    makeInfoDict = lambda infoString: dict([x.split("=") for x in infoString.strip(";").split(";")])
+    if fmt == "gtf":
+        makeInfoDict = lambda infoString: dict([x.strip().split() for x in infoString.strip(";").split(";")])
+        ID_key = "transcript_id"
+        parent_key = "transcript_id"
+    else:
+        makeInfoDict = lambda infoString: dict([x.strip().split("=") for x in infoString.strip(";").split(";")])
+        ID_key = "ID"
+        parent_key = "Parent"
     output = defaultdict(dict)
-    for gffLine in gff:
-        if len(gffLine) > 1 and gffLine[0] != "#":
-            gffObjects = gffLine.strip().split("\t")
+    for line in lines:
+        if len(line) > 1 and line[0] != "#":
+            gffObjects = line.strip().split("\t")
             #store all mRNA and CDS data for the particular scaffold
             scaffold = gffObjects[0]
-            if gffObjects[2] == "mRNA" or gffObjects[2] == "mrna" or gffObjects[2] == "MRNA":
+            if gffObjects[2] == "mRNA" or gffObjects[2] == "mrna" or gffObjects[2] == "MRNA" or gffObjects[2] == "transcript":
                 #we've found a new mRNA
-                try: mRNA = makeInfoDict(gffObjects[-1])["ID"]
+                try: mRNA = makeInfoDict(gffObjects[-1])[ID_key]
                 except:
                     raise ValueError("Problem parsing mRNA information: " + gffObjects[-1]) 
                 if not targets or mRNA in targets:
                     output[scaffold][mRNA] = {'start':int(gffObjects[3]), 'end':int(gffObjects[4]), 'strand':gffObjects[6], 'exons':0, 'cdsStarts':[], 'cdsEnds':[]}
             elif gffObjects[2] == "CDS" or gffObjects[2] == "cds":
                 #we're reading CDSs for an existing mRNA
-                mRNA = makeInfoDict(gffObjects[-1])["Parent"]
+                mRNA = makeInfoDict(gffObjects[-1])[parent_key]
                 if not targets or mRNA in targets:
                     output[scaffold][mRNA]['exons'] += 1
                     output[scaffold][mRNA]['cdsStarts'].append(int(gffObjects[3]))
