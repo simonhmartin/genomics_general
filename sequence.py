@@ -68,7 +68,7 @@ if len(regions) >= 1:
             if end == None: end = seqLen
             start = max(1,start-args.extendLeft)
             end = min(seqLen,end+args.extendRight)
-            if ori == "-": outSeqs.append(genomics.revTrans(seqs[i][start-1:end]))
+            if ori == "-": outSeqs.append(genomics.revComplement(seqs[i][start-1:end]))
             else: outSeqs.append(seqs[i][start-1:end])
             if not args.preserveNames: outNames[-1] = outNames[-1] + ":" + str(start) + "-" + str(end) + ":" + ori
         else: outSeqs.append(seqs[i])
