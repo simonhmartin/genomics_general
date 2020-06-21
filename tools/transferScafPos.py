@@ -6,7 +6,7 @@
 #This goes hand-in-hand with transferFasta.py, which will rebuild a fasta references from an old one
 #agp option is untested, but should work the same as providing a "transfers" file
 
-import sys, argparse, gzip
+import sys, argparse, gzip, time
 import numpy as np
 
 def contains(array, x):
@@ -38,6 +38,7 @@ parser.add_argument("-a", "--agpFile", help="AGP file for position conversion", 
 parser.add_argument("-t", "--transfersFile", help="Chrom and position transfer table (alternative to AGP)", action='store')
 parser.add_argument("--header", help="File has a header line", action = "store_true")
 parser.add_argument("--keepFails", help="Retain failed transfers in output file", action = "store_true")
+parser.add_argument("--allowAGPfails", help="Skip malformed lines in the agp without quitting", action = "store_true")
 
 args = parser.parse_args()
 
@@ -77,13 +78,16 @@ if args.agpFile:
             if not line.startswith("#"):
                 try:newScaf,newStart,newEnd,part,component,scaf,start,end,strand = line.split()
                 except:
-                    raise ValueError("agp file should have nine fields.")
+                    if args.allowAGPfails:
+                        sys.stderr.write("WARNING: skipping malformed agp line:\n{}".format(line))
+                        continue
+                    else:
+                        raise ValueError("agp file should have nine fields.")
                 if component == "N" or component == "U": continue
                 if scaf not in transfers: transfers[scaf] = np.empty(shape = [0,3])
-                try: transfers[scaf] = np.vstack([transfers[scaf], np.array([(int(start), int(end),
+                transfers[scaf] = np.vstack([transfers[scaf], np.array([(int(start), int(end),
                                                                         {"scaf":scaf, "start":int(start), "end":int(end),"strand":strand,
                                                                         "newScaf":newScaf,"newStart":int(newStart),"newEnd":int(newEnd)})])])
-                except: pass
 
 else:
     with open(args.transfersFile, "rt") as transfersFile:
@@ -93,10 +97,9 @@ else:
                 except:
                     raise ValueError("Transfers file should have seven fields for newChrom, newStart, newEnd, chrom, start, end and strand.")
                 if scaf not in transfers: transfers[scaf] = np.empty(shape = [0,3])
-                try: transfers[scaf] = np.vstack([transfers[scaf], np.array([(int(start), int(end),
+                transfers[scaf] = np.vstack([transfers[scaf], np.array([(int(start), int(end),
                                                                         {"scaf":scaf, "start":int(start), "end":int(end),"strand":strand,
                                                                         "newScaf":newScaf,"newStart":int(newStart),"newEnd":int(newEnd)})])])
-                except: pass
 
 ###################################################
 
@@ -141,6 +144,7 @@ for line in inFile:
                 outFile.write(outsep.join(elements) + "\n")
             
             else:
+                break
                 failFile.write("#BROKEN\n")
                 failFile.write(outsep.join(elements) + "\n")
                 
