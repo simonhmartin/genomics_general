@@ -54,11 +54,11 @@ def sorter(resultQueue, writeQueue, verbose):
     resNumber,result,isGood = resultQueue.get()
     resultsReceived += 1
     if verbose:
-      print >> sys.stderr, "Sorter received result", resNumber
+      print("Sorter received result", resNumber, file=sys.stderr)
     if resNumber == expect:
       writeQueue.put((resNumber,result,isGood))
       if verbose:
-        print >> sys.stderr, "Result", resNumber, "sent to writer"
+        print("Result", resNumber, "sent to writer", file=sys.stderr)
       expect +=1
       #now check buffer for further results
       while True:
@@ -66,7 +66,7 @@ def sorter(resultQueue, writeQueue, verbose):
           result,isGood = sortBuffer.pop(str(expect))
           writeQueue.put((expect,result,isGood))
           if verbose:
-            print >> sys.stderr, "Result", expect, "sent to writer"
+            print("Result", expect, "sent to writer", file=sys.stderr)
           expect +=1
         except:
           break
@@ -81,7 +81,7 @@ def writer(writeQueue, out, writeFailedWindows=False):
     while True:
         resNumber,result,isGood = writeQueue.get()
         if verbose:
-            print >> sys.stderr, "Writer received result", resNumber
+            print("Writer received result", resNumber, file=sys.stderr)
         if isGood or writeFailedWindows:
             out.write(result + "\n")
             resultsWritten += 1
@@ -92,7 +92,7 @@ def writer(writeQueue, out, writeFailedWindows=False):
 def checkStats():
   while True:
     sleep(10)
-    print >> sys.stderr, windowsQueued, "windows queued", resultsReceived, "results received", resultsWritten, "results written."
+    print(windowsQueued, "windows queued", resultsReceived, "results received", resultsWritten, "results written.", file=sys.stderr)
 
 
 ####################################################################################################################
@@ -230,7 +230,7 @@ else: outFile.write("windowID,scaffold,start,end,mid,sites,sitesUsed,ABBA,BABA,D
 if exclude:
     scafsFile = open(exclude, "rU")
     scafsToExclude = [line.rstrip() for line in scafsFile.readlines()]
-    print >> sys.stderr, len(scafsToExclude), "scaffolds will be excluded."
+    print(len(scafsToExclude), "scaffolds will be excluded.", file=sys.stderr)
     scafsFile.close()
 else:
     scafsToExclude = None
@@ -238,7 +238,7 @@ else:
 if include:
     scafsFile = open(include, "rU")
     scafsToInclude = [line.rstrip() for line in scafsFile.readlines()]
-    print >> sys.stderr, len(scafsToInclude), "scaffolds will be analysed."
+    print(len(scafsToInclude), "scaffolds will be analysed.", file=sys.stderr)
     scafsFile.close()
 else:
     scafsToInclude = None
@@ -310,7 +310,7 @@ for window in windowGenerator:
 
 ############################################################################################################################################
 
-print >> sys.stderr, "\nWriting final results...\n"
+print("\nWriting final results...\n", file=sys.stderr)
 while resultsHandled < windowsQueued:
   sleep(1)
 
@@ -319,10 +319,10 @@ sleep(5)
 genoFile.close()
 outFile.close()
 
-print >> sys.stderr, str(windowsQueued), "windows were tested.\n"
-print >> sys.stderr, str(resultsWritten), "results were written.\n"
+print(windowsQueued, "windows were tested", file=sys.stderr)
+print(resultsWritten, "results were written", file=sys.stderr)
 
-print "\nDone."
+print("\nDone.", file=sys.stderr)
 
 sys.exit()
 
