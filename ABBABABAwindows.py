@@ -5,11 +5,16 @@ import numpy as np
 
 import genomics
 
-from multiprocessing import Process, Queue
-from multiprocessing.queues import SimpleQueue
 from threading import Thread
-from time import sleep
 
+from multiprocessing import Process
+
+if sys.version_info>=(3,0):
+    from multiprocessing import SimpleQueue
+else:
+    from multiprocessing.queues import SimpleQueue
+
+from time import sleep
 
 
 ####################################################################################################################################
