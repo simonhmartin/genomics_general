@@ -199,7 +199,7 @@ for p in [args.pop1, args.pop2, args.pop3, args.outgroup]:
     else: popInds.append([])
 
 if args.popsFile:
-    with open(args.popsFile, "r") as pf: popDict = dict([ln.split() for ln in pf])
+    with open(args.popsFile, "rt") as pf: popDict = dict([ln.split() for ln in pf])
     for ind in popDict.keys():
         try: popInds[popNames.index(popDict[ind])].append(ind)
         except: pass
@@ -219,10 +219,10 @@ sampleData = genomics.SampleData(popNames = popNames, popInds = popInds, ploidyD
 
 #open files
 
-if args.genoFile: genoFile = gzip.open(args.genoFile, "r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r")
+if args.genoFile: genoFile = gzip.open(args.genoFile, "rt") if args.genoFile.endswith(".gz") else open(args.genoFile, "rt")
 else: genoFile = sys.stdin
 
-if args.outFile: outFile = gzip.open(args.outFile, "w") if args.outFile.endswith(".gz") else open(args.outFile, "w")
+if args.outFile: outFile = gzip.open(args.outFile, "wt") if args.outFile.endswith(".gz") else open(args.outFile, "wt")
 else: outFile = sys.stdout
 
 if not args.addWindowID: outFile.write("scaffold,start,end,mid,sites,sitesUsed,ABBA,BABA,D,fd,fdM\n")
@@ -233,7 +233,7 @@ else: outFile.write("windowID,scaffold,start,end,mid,sites,sitesUsed,ABBA,BABA,D
 #scafs to exclude
 
 if exclude:
-    scafsFile = open(exclude, "rU")
+    scafsFile = open(exclude, "rt")
     scafsToExclude = [line.rstrip() for line in scafsFile.readlines()]
     print(len(scafsToExclude), "scaffolds will be excluded.", file=sys.stderr)
     scafsFile.close()
@@ -241,7 +241,7 @@ else:
     scafsToExclude = None
 
 if include:
-    scafsFile = open(include, "rU")
+    scafsFile = open(include, "rt")
     scafsToInclude = [line.rstrip() for line in scafsFile.readlines()]
     print(len(scafsToInclude), "scaffolds will be analysed.", file=sys.stderr)
     scafsFile.close()
