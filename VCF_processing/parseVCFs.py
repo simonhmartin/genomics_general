@@ -6,6 +6,8 @@ import parseVCF
 
 from multiprocessing import Process
 
+from collections import defaultdict
+
 if sys.version_info.major < 3:
     from multiprocessing.queues import SimpleQueue
 else:
@@ -32,13 +34,16 @@ def tabixStream(fileName, region = None, chrom = None, start=None, end=None, hea
     
     return iter(p.communicate()[0].strip().split("\n"))
 
-def parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, skipIndels, missing, ploidy, outSep, verbose):
+def parseAndMerge(fileNames, headData, scaffold, start, end, minQual, field, gtFilters, method, skipIndels, missing,
+                  excludeDuplicates, simplifyALT, _samples_, allMissing, mustMatchREFlen, keepPartial, ploidyDict,
+                  ploidyMismatchToMissing, outSep, verbose):
     n = len(fileNames)
     
     if verbose: sys.stderr.write("Attempting to extract {}:{}-{}.\n".format(scaffold,start,end))
     
     sitesGenerators = [parseVCF.parseVcfSites(tabixStream(fileNames[x], chrom=scaffold, start=start, end=end),
-                                              headData[x]["mainHeaders"], excludeDuplicates=True) for x in range(n)]
+                                              headData[x]["mainHeaders"], excludeDuplicates=excludeDuplicates,
+                                              simplifyALT=simplifyALT) for x in range(n)]
     
     currentSites = []
     for x in range(n):
@@ -57,18 +62,24 @@ def parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, 
         filesRepresented = 0
         outObjects = [scaffold, str(pos)]
         for x in range(n):
+            present=False
             if currentSites[x] and currentSites[x].POS == pos:
-                #get genotypes and add to output
-                if not skipIndels or currentSites[x].getType() is not "indel":
-                    genotypes = currentSites[x].getGenotypes(gtFilters,asList=True,withPhase=True,missing=missing,allowOnly="ACGT",keepPartial=False)
-                    filesRepresented += 1
-                else: genotypes = ["/".join([missing]*ploidy)]*headData[x]["nSamples"]
+                present=True
+                if minQual and canFloat(currentSites[x].QUAL) and float(currentSites[x].QUAL) < minQual: present = False
+            if present:
+                if field: output = vcfSite.getGenoField(field,samples=samples[x], missing=missing)
+                else:
+                    #get genotypes and add to output
+                    output = currentSites[x].getGenotypes(gtFilters, asList=True, withPhase=True, samples=_samples_[x],
+                                                          missing=missing, mustMatchREFlen=skipIndels, keepPartial=keepPartial,
+                                                          ploidyDict=ploidyDict, ploidyMismatchToMissing=ploidyMismatchToMissing)
+                filesRepresented += 1
                 try: currentSites[x] = next(sitesGenerators[x])
                 except: currentSites[x] = None
             else:
-                #if not a match, add Ns for this file, and dont read next line
-                genotypes = ["/".join([missing]*ploidy)]*headData[x]["nSamples"]
-            outObjects += genotypes
+                #if not a match, add missing for this file, and dont read next line
+                output = allMissing[x]
+            outObjects += output
         #so now we've created the output, but need to decide if we can write it
         if method == "all" or (method == "union" and filesRepresented >= 1) or (method == "intersect" and filesRepresented == n):
             outLines.append(outSep.join(outObjects) + "\n")
@@ -77,7 +88,9 @@ def parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, 
     return outLines #and thats it. Move on to the next site in the genome
 
 
-def parseAndMergeWrapper(inQueue, outQueue, fileNames, headData, gtFilters, method, skipIndels, missing, ploidy, outSep, verbose):
+def parseAndMergeWrapper(inQueue, outQueue, fileNames, minQual, field, gtFilters, method, skipIndels, missing,
+                         excludeDuplicates, simplifyALT, _samples_, allMissing, mustMatchREFlen, keepPartial, ploidyDict,
+                         ploidyMismatchToMissing, outSep, verbose):
     while True:
         
         windowNumber,scaffold,start,end = inQueue.get() # retrieve window data
@@ -86,7 +99,9 @@ def parseAndMergeWrapper(inQueue, outQueue, fileNames, headData, gtFilters, meth
             outQueue.put((-1,None,)) # this is the way of telling everything we're done
             break
         
-        parsedLines = parseAndMerge(fileNames, headData, scaffold, start, end, gtFilters, method, skipIndels, missing, ploidy, outSep, verbose)
+        parsedLines = parseAndMerge(fileNames, headData, scaffold, start, end, minQual, field, gtFilters, method, skipIndels, missing,
+                                    excludeDuplicates, simplifyALT, _samples_, allMissing, mustMatchREFlen, keepPartial, ploidyDict,
+                                    ploidyMismatchToMissing, outSep, verbose)
         outQueue.put((windowNumber, parsedLines,))
 
 
@@ -154,67 +169,61 @@ def checkStats():
 ### parse arguments
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-i", "--inFile", help="Input vcf file", action = "append", required = True)
-parser.add_argument("-o", "--outFile", help="Output csv file", action = "store")
+
+#add standard arguments
+parseVCF.addArgs(parser, requireInfile=True)
+
+parser.add_argument("-i", "--inFile", help="Input vcf file", action = "append", required=True)
 parser.add_argument("-f", "--fai", help="Fasta index file", action = "store")
 parser.add_argument("-M", "--method", help="How to merge", action = "store", choices = ("all","intersect","union"), default = "union")
 
-#contigs
-parser.add_argument("--include", help="include contigs (separated by commas)", action='store')
-parser.add_argument("--includeFile", help="File of contigs (one per line)", action='store')
-parser.add_argument("--exclude", help="exclude contigs (separated by commas)", action='store')
-parser.add_argument("--excludeFile", help="File of contigs (one per line)", action='store')
 
 parser.add_argument("-t", "--threads", help="Analysis threads", type=int, action = "store", default = 1)
 parser.add_argument("--verbose", help="Verbose output.", action = "store_true")
 parser.add_argument("--windSize", help="Size of windows to process in each thread", type=int, action = "store", default = 100000)
-parser.add_argument("--space", help="Output separator is space instead of tab", action = "store_true")
 parser.add_argument("--test", help="Test - runs 10 windows", action='store_true')
 
 
-#vcf parsing arguments
-parser.add_argument("--gtf", help="Genotype filter. Syntax: flag=X min=X max=X siteTypes=X,X.. gtTypes=X,X.. samples=X,X..", action = "append", nargs = '+')
-parser.add_argument("--skipIndels", help="Skip indels", action = "store_true")
-parser.add_argument("--missing", help="Value to use for missing data", action = "store", default = "N")
-parser.add_argument("--ploidy", help="Ploidy for missing data", action = "store", type = int, default = 2)
-parser.add_argument("--outSep", help="Output separator", action = "store", default = "\t")
-
 args = parser.parse_args()
 
-include = []
-exclude = []
+if args.expandMulti:
+    raise ValueError("Option --expandMulti is not currently suppoted by this multi-threaded script. Use parseVCF.py instead\n")
 
-if args.include: include += args.include.split(",")
-if args.exclude: exclude += args.exclude.split(",")
-
-if args.includeFile:
-    with open(args.includeFile, 'r') as includeFile:
-        include += [c.strip() for c in includeFile.read().split("\n")]
-
-if args.excludeFile:
-    with open(args.excludeFile, 'r') as excludeFile:
-        exclude += [c.strip() for c in excludeFile.read().split("\n")]
-
-if len(include) >= 1:
-    include = set(include)
-    sys.stderr.write("{} contigs will be included.".format(len(include)))
-
-if len(exclude) >= 1:
-    exclude = set(exclude)
-    sys.stderr.write("{} contigs will be excluded.".format(len(exclude)))
+include,exclude = parseVCF.parseIncludeExcludeArgs(args)
 
 gtFilters = [parseVCF.parseGenotypeFilterArg(gtf) for gtf in args.gtf] if args.gtf else []
 
-verbose = args.verbose
-##########################################################################################################################
+mustMatchREFlen=args.skipIndels
 
 ###########################################################################################################################
 ### open files
 
 headData = [parseVCF.getHeadData(f) for f in args.inFile]
-samples = [s for ss in [h["sampleNames"] for h in headData] for s in ss]
+_samples_ = [h["sampleNames"] for h in headData]
 
-if args.outFile: outFile = gzip.open(args.outFile, "w") if args.outFile.endswith(".gz") else open(args.outFile, "w")
+if args.samples:
+    requestedSamples = args.samples.split(",")
+    allSamples = [s for ss in _samples_ for s in ss]
+    for sample in requestedSamples: assert sample in allSamples, "Sample {} not in VCF header\n".format(sample)
+    _samples_ = [[s for s in samples if s in requestedSamples] for samples in _samples_]
+
+ploidyDict = defaultdict(lambda: args.ploidy)
+if args.ploidyFile:
+    with open(args.ploidyFile, "rt") as pf: ploidyDict.upldate(dict([[s[0],int(s[1])] for s in [l.split() for l in pf]]))
+
+#make a list of missing genotypes for each file for fast insertion of missing lines when needed
+if args.field:
+    missing = args.missing if args.missing else "."
+    allMissing = [[missing]*len(samples) for samples in _samples_]
+else:
+    missing = args.missing if args.missing else "N"
+    allMissing = [["/".join([missing]*ploidyDict[sample]) for sample in samples] for samples in _samples_]
+
+print(allMissing)
+
+##########################################################################################################
+
+if args.outFile: outFile = gzip.open(args.outFile, "wt") if args.outFile.endswith(".gz") else open(args.outFile, "wt")
 else: outFile = sys.stdout
 
 ###parse fai file
@@ -223,8 +232,7 @@ if args.fai:
     with open(args.fai, "r") as fai: scafLens = [(s,int(l)) for s,l in [ln.split()[:2] for ln in fai]]
     scafs = [x[0] for x in scafLens]
     scafLens = dict(scafLens)
-
-if not args.fai:
+else:
     scafs = headData[0]["contigs"]
     scafLens = headData[0]["contigLengths"]
 
@@ -252,19 +260,20 @@ This one reads from the pod queue, passes each line some analysis function(s), g
 workerThreads = []
 sys.stderr.write("\nStarting {} worker threads\n".format(args.threads))
 for x in range(args.threads):
-    workerThread = Process(target=parseAndMergeWrapper,args=(inQueue, outQueue, args.inFile, headData, gtFilters, args.method,
-                                                       args.skipIndels, args.missing, args.ploidy, args.outSep, verbose,))
+    workerThread = Process(target=parseAndMergeWrapper,args=(inQueue, outQueue, args.inFile, args.minQual, args.field, gtFilters, args.method, args.skipIndels, missing,
+                                                             args.excludeDuplicates, args.simplifyALT, _samples_, allMissing, mustMatchREFlen, args.keepPartial, ploidyDict,
+                                                             args.ploidyMismatchToMissing, args.outSep, args.verbose,))
     workerThread.daemon = True
     workerThread.start()
     workerThreads.append(workerThread)
 
 '''start two threads for sorting and writing the results'''
-sorterThread = Thread(target=sorter, args=(outQueue, writeQueue, args.threads, verbose,))
+sorterThread = Thread(target=sorter, args=(outQueue, writeQueue, args.threads, args.verbose,))
 sorterThread.daemon = True
 sorterThread.start()
 
 '''start one Process for sorting and writing the results'''
-writerThread = Thread(target=writer, args=(writeQueue, outFile, verbose,))
+writerThread = Thread(target=writer, args=(writeQueue, outFile, args.verbose,))
 writerThread.daemon = True
 writerThread.start()
 
@@ -277,7 +286,7 @@ checkerThread.start()
 
 ##########################################################################################################################
 
-outFile.write(args.outSep.join(["#CHROM", "POS"] + samples) + "\n")
+outFile.write(args.outSep.join(["#CHROM", "POS"] + [s for samples in _samples_ for s in samples]) + "\n")
 
 '''now we go through assuming all files are ordered as in the fai.
 if we don't find the line we're looking for we move on to the next'''
@@ -291,7 +300,6 @@ for scaf in scafs:
         windowsQueued += 1
         if args.test and windowsQueued == 10: break
     if args.test and windowsQueued == 10: break
-
 
 ############################################################################################################################################
 

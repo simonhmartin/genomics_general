@@ -5,7 +5,10 @@
 
 import argparse, sys, gzip, re, subprocess
 
+from collections import defaultdict
+
 import numpy as np
+
 
 def GTtype(alleles):
     alleleSet = set(alleles)
@@ -15,11 +18,40 @@ def GTtype(alleles):
     else: return "HomAlt"
 
 
+re_cigar = re.compile("\d+|[MXDI]")
+
+re_phaser = re.compile("[/|]")
+
+def simplifyAlt(alt, cigar, missing="N"):
+    l = re_cigar.findall(cigar)
+    i = 0
+    simp = ""
+    try:
+        for x in range(0,len(l),2):
+            label = l[x+1]
+            n = int(l[x])
+            if label == "M" or label == "X":
+                #we have a matching stretch
+                simp += alt[i:i + n]
+                i+=n
+            elif label == "I":
+                #insertion, so just advance index
+                i += n
+            elif label == "D":
+                #deletion, so add missing without advancing
+                simp += "".join([missing]*n)
+    except:
+        raise ValueError("Malformed CIGAR: " + cigar)
+    
+    return(simp)
+
+
 class VcfSite:
     
-    __slots__ = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'REF_ALT', 'QUAL', 'FILTER', 'INFO', 'sampleNames', 'genoData', "alleleDict"]
+    __slots__ = ['CHROM', 'POS', 'ID', 'REF', 'ALT', 'REFlen', 'nALT', 'lenMatchDict', 'QUAL', 'FILTER', 'INFO', 'sampleNames', 'genoData', "alleleDict"]
     
-    def __init__(self, elements=None, line=None, headers=None, headerLine=None, precompGenoData=None):
+    def __init__(self, elements=None, line=None, headers=None, headerLine=None, precompGenoData=None,
+                 parseINFO=False, simplifyALT=False):
         assert((elements != None or line != None) and (headers != None or headerLine != None))
         if not headers: headers = headerLine.split()
         if not elements: elements = line.split()
@@ -30,11 +62,22 @@ class VcfSite:
         self.POS = int(lineDict["POS"])
         self.ID = lineDict["ID"]
         self.REF = lineDict["REF"]
-        self.ALT = lineDict["ALT"].split(",")
-        self.alleleDict = dict(zip([str(i) for i in range(len(self.ALT)+1)], [self.REF] + self.ALT))
+        self.REFlen = len(self.REF)
+        self.ALT = lineDict["ALT"].split(",") if lineDict["ALT"] != "." else []
+        self.nALT = len(self.ALT)
         self.QUAL = lineDict["QUAL"]
         self.FILTER = lineDict["FILTER"]
-        self.INFO = lineDict["INFO"].split(";")
+        
+        if parseINFO or simplifyALT:
+            self.INFO = dict([x.split("=") for x in lineDict["INFO"].split(";")])
+        
+        if simplifyALT:
+            cigars = self.INFO["CIGAR"].split(",")
+            for x in range(self.nALT):
+                self.ALT[x] = simplifyAlt(self.ALT[x], cigars[x])
+        
+        self.alleleDict = dict(zip([str(i) for i in range(self.nALT+1)], [self.REF] + self.ALT))
+        self.lenMatchDict = dict([(key, len(self.alleleDict[key]) == self.REFlen) for key in self.alleleDict])
         
         genoInfoNames = lineDict["FORMAT"].split(":")
         
@@ -43,24 +86,28 @@ class VcfSite:
         self.genoData = {}
         for sampleName in self.sampleNames:
             #if pre-compiled genotype data are available, try using those 
-            if precompGenoData and lineDict[sampleName] in precompGenoData:
-                self.genoData[sampleName] = precompGenoData[lineDict[sampleName]]
+            #need to check is both the format headings AND individual data match. So use a tuple as index
+            if precompGenoData and (lineDict["FORMAT"], lineDict[sampleName],) in precompGenoData:
+                self.genoData[sampleName] = precompGenoData[(lineDict["FORMAT"], lineDict[sampleName],)]
             else:
                 #otherwise make dictionary for this sample
                 self.genoData[sampleName] = dict(zip(genoInfoNames, lineDict[sampleName].split(":")))
                 if "GT" in self.genoData[sampleName]:
-                    self.genoData[sampleName]["alleles"] = tuple(self.genoData[sampleName]["GT"])[::2]
+                    self.genoData[sampleName]["alleles"] = tuple(re_phaser.split(self.genoData[sampleName]["GT"]))
                     self.genoData[sampleName]["phase"] = "|" if "|" in self.genoData[sampleName]["GT"] else "/"
                 if precompGenoData["__counter__"] < precompGenoData["__maxSize__"]:
-                    precompGenoData[lineDict[sampleName]] = self.genoData[sampleName]
+                    precompGenoData[(lineDict["FORMAT"], lineDict[sampleName],)] = self.genoData[sampleName]
                     precompGenoData["__counter__"] += 1
     
     
-    def getGenotype(self, sample, gtFilters = [], withPhase=True, asNumbers = False, missing = None, allowOnly=None, keepPartial=False, ploidy=None):
+    def getGenotype(self, sample, gtFilters = [], withPhase=True, asNumbers = False, missing = None,
+                    allowOnly=None, mustMatchREFlen=False, keepPartial=False, ploidy=None, ploidyMismatchToMissing=False, expandMulti=False):
+        
         genoData = self.genoData[sample]
         if missing is None:
             if asNumbers: missing = "."
-            else: missing = "N"
+            else:
+                missing = "N" if not expandMulti or self.REFlen==1 else ["N"]*self.REFlen
         
         #check each gt filter
         passed = True
@@ -80,15 +127,23 @@ class VcfSite:
             if not passed: break
         
         if ploidy is None: ploidy=len(genoData["alleles"])
+        elif ploidy != len(genoData["alleles"]):
+            if ploidyMismatchToMissing:
+                passed=False
+            else:
+                raise ValueError("Sample {} at {}:{} genotype {} does not match explected ploidy of {}".format(sample, self.CHROM, self.POS,
+                                                                                                           self.genoData[sample]["GT"], ploidy)) 
         
         if passed:
             if not asNumbers:
                 try:
-                    sampleAlleles = [self.alleleDict[a] for a in genoData["alleles"]]
+                    #retrieve alleles, but check if lengths must match and if they don't add a missing allele
+                    sampleAlleles = [self.alleleDict[a] if (not mustMatchREFlen or self.lenMatchDict[a]) else missing for a in genoData["alleles"]]
                     if allowOnly: sampleAlleles = [a if a in allowOnly else missing for a in sampleAlleles]
                     if not keepPartial: sampleAlleles = sampleAlleles if missing not in sampleAlleles else [missing]*ploidy
                 
-                except: sampleAlleles = [missing]*ploidy
+                except:
+                    sampleAlleles = [missing]*ploidy
             
             else:
                 sampleAlleles = genoData["alleles"][:]
@@ -96,30 +151,30 @@ class VcfSite:
         
         else: sampleAlleles = [missing]*ploidy
         
-        if withPhase: return genoData["phase"].join(sampleAlleles)
-        else: return "".join(sampleAlleles)
+        sep = genoData["phase"] if withPhase else ""
+        
+        if expandMulti:
+            return tuple(sep.join([a[i] for a in sampleAlleles]) for i in range(self.REFlen))
+        
+        return sep.join(sampleAlleles)
     
     
     def getGenotypes(self, gtFilters = [], asList = False, withPhase=True, asNumbers = False,
-                     samples = None, missing = None, allowOnly=None, keepPartial=False, ploidyDict=None):
+                     samples = None, missing = None, allowOnly=None, mustMatchREFlen=False,
+                     keepPartial=False, ploidyDict=None, ploidyMismatchToMissing=False, expandMulti=False):
         
         if not samples: samples = self.sampleNames
         output = {}
         for sample in samples:
             ploidy = ploidyDict[sample] if ploidyDict is not None else None
             output[sample] = self.getGenotype(sample, gtFilters=gtFilters, withPhase=withPhase, asNumbers=asNumbers,
-                                              missing=missing, allowOnly=allowOnly, keepPartial=keepPartial, ploidy=ploidy)
+                                              missing=missing, allowOnly=allowOnly, mustMatchREFlen=mustMatchREFlen,
+                                              keepPartial=keepPartial, ploidy=ploidy, ploidyMismatchToMissing=ploidyMismatchToMissing,
+                                              expandMulti=expandMulti)
         
         if asList: return [output[sample] for sample in samples]
         
         return output
-    
-    def getType(self):
-        if len(self.REF) == 1:
-            if self.ALT == ["."]: return "mono"
-            elif max([len(a) for a in self.ALT]) == 1: return "SNP"
-            else: return "indel"
-        else: return "indel"
     
     def getGenoField(self, field, samples = None, missing=None):
         if missing is None: missing = "."
@@ -159,7 +214,7 @@ def getHeadData(fileName):
         return parseHeaderLines(fileObj)
 
 
-def parseVcfSites(lines, mainHeaders, precomp=True, precompMaxSize=10000, excludeDuplicates=False):
+def parseVcfSites(lines, mainHeaders, precomp=True, precompMaxSize=10000, excludeDuplicates=False, parseINFO=False, simplifyALT=False):
     if precomp:
         precompGenoData = {}
         precompGenoData["__maxSize__"] = precompMaxSize
@@ -175,7 +230,7 @@ def parseVcfSites(lines, mainHeaders, precomp=True, precompMaxSize=10000, exclud
             if elements[0] == lastChrom and elements[1] == lastPos: continue
             lastChrom = elements[0]
             lastPos = elements[1]
-        yield VcfSite(elements=elements, headers=mainHeaders, precompGenoData=precompGenoData)
+        yield VcfSite(elements=elements, headers=mainHeaders, precompGenoData=precompGenoData, parseINFO=parseINFO, simplifyALT=simplifyALT)
 
 def canFloat(string):
     try: float(string)
@@ -194,14 +249,8 @@ def parseGenotypeFilterArg(arg):
         return gtfDict
     except: raise ValueError("Bad genotype filter specification. See help.")
 
-###############################################################################################################
-if __name__ == "__main__":
 
-
-    ### parse arguments
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--inFile", help="Input vcf file", action = "store")
+def addArgs(parser, requireInfile=False):
     parser.add_argument("-o", "--outFile", help="Output csv file", action = "store")
 
     #specific samples
@@ -212,28 +261,27 @@ if __name__ == "__main__":
     parser.add_argument("--includeFile", help="File of contigs (one per line)", action='store')
     parser.add_argument("--exclude", help="exclude contigs (separated by commas)", action='store')
     parser.add_argument("--excludeFile", help="File of contigs (one per line)", action='store')
-
-
+    
     #vcf parsing arguments
     parser.add_argument("--minQual", help="Minimum QUAL for a site", type=int, action = "store")
     parser.add_argument("--gtf", help="Genotype filter. Syntax: flag=X min=X max=X siteTypes=X,X.. gtTypes=X,X.. samples=X,X..", action = "append", nargs = '+')
 
     parser.add_argument("--skipIndels", help="Skip indels", action = "store_true")
-    parser.add_argument("--skipMono", help="Skip monomorphic sites", action = "store_true")
+    parser.add_argument("--excludeDuplicates", help="Only include the first in a series of duplicated positions", action = "store_true")
+    parser.add_argument("--simplifyALT", help="Simplify multi-site alternate alleles using CIGAR (as in Freebayes output)", action = "store_true")
+    parser.add_argument("--expandMulti", help="Expand multi-site alleles (also Sets simplifyALT to True)", action = "store_true")
     
-    parser.add_argument("--ploidy", help="Ploidy for each sample", action = "store", type=int, nargs="+", default=[2])
+    parser.add_argument("--ploidy", help="Ploidy for each sample", action = "store", type=int, default=2)
     parser.add_argument("--ploidyFile", help="File with samples names and ploidy as columns", action = "store")
+    parser.add_argument("--ploidyMismatchToMissing", help="Set genotypes with mismatched ploidy to missing", action = "store_true")
+    parser.add_argument("--keepPartial", help="Keep genotypes where some but not all alleles are missing", action = "store_true")
     
     parser.add_argument("--field", help="Optional - format field to extract", action = "store")
     parser.add_argument("--missing", help="Value to use for missing data", action = "store")
     parser.add_argument("--outSep", help="Output separator", action = "store", default = "\t")
 
-    args = parser.parse_args()
 
-    samples = args.samples
-
-    if samples: samples = samples.split(",")
-
+def parseIncludeExcludeArgs(args):
     include = []
     exclude = []
 
@@ -241,11 +289,11 @@ if __name__ == "__main__":
     if args.exclude: exclude += args.exclude.split(",")
 
     if args.includeFile:
-        with open(args.includeFile, 'r') as includeFile:
+        with open(args.includeFile, 'rt') as includeFile:
             include += [c.strip() for c in includeFile.read().split("\n")]
 
     if args.excludeFile:
-        with open(args.excludeFile, 'r') as excludeFile:
+        with open(args.excludeFile, 'rt') as excludeFile:
             exclude += [c.strip() for c in excludeFile.read().split("\n")]
 
     if len(include) >= 1:
@@ -256,7 +304,30 @@ if __name__ == "__main__":
         exclude = set(exclude)
         sys.stderr.write("{} contigs will be excluded.".format(len(exclude)))
     
+    return (include,exclude,)
+
+
+###############################################################################################################
+if __name__ == "__main__":
+
+
+    ### parse arguments
+
+    parser = argparse.ArgumentParser()
+    
+    addArgs(parser)
+    
+    parser.add_argument("-i", "--inFile", help="Input vcf file", action = "store")
+    
+    args = parser.parse_args()
+    
+    samples = args.samples.split(",") if args.samples else None
+    
+    include,exclude = parseIncludeExcludeArgs(args)
+    
     gtFilters = [parseGenotypeFilterArg(gtf) for gtf in args.gtf] if args.gtf else []
+    
+    simplifyALT = args.simplifyALT or args.expandMulti
     
     ##########################################################################################################################
 
@@ -266,7 +337,7 @@ if __name__ == "__main__":
     else: inFile = sys.stdin
 
 
-    if args.outFile: outFile = gzip.open(args.outFile, "w") if args.outFile.endswith(".gz") else open(args.outFile, "w")
+    if args.outFile: outFile = gzip.open(args.outFile, "wt") if args.outFile.endswith(".gz") else open(args.outFile, "wt")
     else: outFile = sys.stdout
     
     #header data
@@ -274,30 +345,32 @@ if __name__ == "__main__":
     
     #check specified samples are in first file. Otherwise use this entire set    
     if samples:
-        for sample in samples: assert sample in headData["sampleNames"], "Specified sample name not in VCF header."
+        for sample in samples: assert sample in headData["sampleNames"], "Sample {} not in VCF header\n".format(sample)
     else: samples = headData["sampleNames"]
     
-    if args.ploidyFile is not None:
-        with open(args.ploidyFile, "rt") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
-    else:
-        ploidy = args.ploidy if len(args.ploidy) != 1 else args.ploidy*len(samples)
-        assert len(ploidy) == len(samples), "Incorrect number of ploidy values supplied."
-        ploidyDict = dict(zip(samples,ploidy))
-
-
+    
+    ploidyDict = defaultdict(lambda: args.ploidy)
+    if args.ploidyFile:
+        with open(args.ploidyFile, "rt") as pf: ploidyDict.upldate(dict([[s[0],int(s[1])] for s in [l.split() for l in pf]]))
+    
     ##########################################################################################################################
 
     outFile.write(args.outSep.join(["#CHROM", "POS"] + samples) + "\n")
     
-    for vcfSite in parseVcfSites(inFile, headData["mainHeaders"]):
+    for vcfSite in parseVcfSites(inFile, headData["mainHeaders"], excludeDuplicates=args.excludeDuplicates, simplifyALT=simplifyALT):
         if (exclude and vcfSite.CHROM in exclude) or (include and vcfSite.CHROM not in include): continue
-        if args.skipMono and vcfSite.getType() is "mono": continue
         if args.minQual and canFloat(vcfSite.QUAL) and float(vcfSite.QUAL) < args.minQual: continue
         if args.field is not None: output = vcfSite.getGenoField(args.field,samples=samples, missing=args.missing)
         else:
-            allowed=["A","C","G","T"] if args.skipIndels else None
             output = vcfSite.getGenotypes(gtFilters,asList=True,withPhase=True,samples=samples,missing=args.missing,
-                                            allowOnly=allowed,keepPartial=False,ploidyDict=ploidyDict)
+                                          mustMatchREFlen=args.skipIndels,keepPartial=args.keepPartial,ploidyDict=ploidyDict,
+                                          ploidyMismatchToMissing=args.ploidyMismatchToMissing,expandMulti=args.expandMulti)
+            #if we expanded multi-site genotypes, we need to write multiple lines
+            if args.expandMulti:
+                for x in range(vcfSite.REFlen):
+                    outFile.write(args.outSep.join([vcfSite.CHROM, str(vcfSite.POS + x)] + [o[x] for o in output]) + "\n")
+                continue
+            
         outFile.write(args.outSep.join([vcfSite.CHROM, str(vcfSite.POS)] + output) + "\n")
     
     outFile.close()
