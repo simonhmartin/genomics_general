@@ -197,8 +197,11 @@ def CDSpositions(exonStarts, exonEnds, strand, trim=False):
     nExons = len(exonStarts)
     assert nExons == len(exonEnds)
     
+    #index them by start position
+    idx = np.argsort(exonEnds)[::-1] if strand == "-" else np.argsort(exonStarts)
+    
     #for each exon, extract a list of scaffold positions
-    codingPositions = [list(range(exonStarts[i], exonEnds[i] + 1)) for i in range(nExons)]
+    codingPositions = [list(range(exonStarts[i], exonEnds[i] + 1)) for i in idx]
     
     #reverse the positions if necessary
     if strand == "-":
@@ -1011,11 +1014,14 @@ class Alignment:
     def alleles(self):
         return [set(self.array[:,i][self.nanMask[:,i]]) for i in range(self.l)]
     
-    def sampleAlleles(self, sampleNames=None, asList = False):
+    def sampleAlleles(self, sampleNames=None, asList = False, numeric=False):
         if sampleNames is None: sampleNames,sampleIndices = uniqueIndices(self.sampleNames, preserveOrder=True)
         else: sampleIndices = [np.where(self.sampleNames == sampleName)[0] for sampleName in sampleNames]
         #get alleles at each site for each sample
-        sampleAlleles = [[set(self.array[sidx,i][self.nanMask[sidx,i]]) for sidx in sampleIndices] for i in range(self.l)]
+        if numeric:
+            sampleAlleles = [[set(self.numArray[sidx,i][self.nanMask[sidx,i]]) for sidx in sampleIndices] for i in range(self.l)]
+        else:
+            sampleAlleles = [[set(self.array[sidx,i][self.nanMask[sidx,i]]) for sidx in sampleIndices] for i in range(self.l)]
         if asList: return sampleAlleles
         else: return [dict(zip(sampleNames,sampleAlleles[i])) for i in range(self.l)]
     
@@ -2154,15 +2160,16 @@ def makeAlnString(names=None, seqs=None, seqDict=None, outFormat="phylip", lineL
 
 #code to parse alignment strings
 
-def parseFasta(string):
+def parseFasta(string, makeUppercase=False):
     splitString = string.split(">")[1:]
     names = [s.split()[0] for s in splitString]
     seqs = [s[s.index("\n"):].replace("\n","").replace(" ","") for s in splitString]
+    if makeUppercase: seqs = [s.upper() for s in seqs]
     return (names,seqs)
 
 #Phylip can include multiple alignments. This will output multiple sequences as a list of tuples
 #Single alignments will be output as a tuple, unless asList is True
-def parsePhylip(string, asList=False): 
+def parsePhylip(string, asList=False):
     lineParts = [l.strip().split() for l in string.strip().split("\n")]
     lineParts = [parts for parts in lineParts if parts != []] 
     headIdx = []
@@ -2219,7 +2226,6 @@ def parseFai(faiFileHandle):
     return (tuple(scafs), tuple(lengths),)
 
 ###########################################################################################################
-#class for working with intervals
 
 def parseRegionText(regionText):
     splitText = regionText.split(":")
