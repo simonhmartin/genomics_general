@@ -194,30 +194,28 @@ verbose = args.verbose
 
 
 ############## parse samples and populations
-allInds = []
-
-if args.samples is not None:
-    allInds = list(set(allInds + args.samples))
-
-if len(allInds) == 0:
+if args.samples:
+    samples = args.samples
+else:
+    assert args.genoFile, "If piping from stdin, you need to provide the sample names using --samples."
     with gzip.open(args.genoFile, "rt") if args.genoFile.endswith(".gz") else open(args.genoFile, "rt") as gf:
-        allInds = gf.readline().split()[2:]
+        samples = gf.readline().split()[2:]
 
 if args.ploidy is not None:
-    ploidy = args.ploidy if len(args.ploidy) != 1 else args.ploidy*len(allInds)
-    assert len(ploidy) == len(allInds), "Incorrect number of ploidy values supplied."
-    ploidyDict = dict(zip(allInds,ploidy))
+    ploidy = args.ploidy if len(args.ploidy) != 1 else args.ploidy*len(samples)
+    assert len(ploidy) == len(samples), "Incorrect number of ploidy values supplied."
+    ploidyDict = dict(zip(samples,ploidy))
 elif args.ploidyFile is not None:
     with open(args.ploidyFile, "rt") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
 elif args.inferPloidy:
-    ploidyDict = dict(zip(allInds,[None]*len(allInds)))
+    ploidyDict = dict(zip(samples,[None]*len(samples)))
 else:
-    if args.genoFormat == "haplo": ploidyDict = dict(zip(allInds,[1]*len(allInds)))
-    else: ploidyDict = dict(zip(allInds,[2]*len(allInds)))
+    if args.genoFormat == "haplo": ploidyDict = dict(zip(samples,[1]*len(samples)))
+    else: ploidyDict = dict(zip(samples,[2]*len(samples)))
     if args.haploid:
         for sample in args.haploid: ploidyDict[sample] = 1
 
-sampleData = genomics.SampleData(indNames = allInds, ploidyDict = ploidyDict)
+sampleData = genomics.SampleData(indNames = samples, ploidyDict = ploidyDict)
 
 ############################################################################################################################################
 
@@ -228,11 +226,11 @@ else: genoFile = sys.stdin
 
 outs = {}
 
-if args.outFile: outs["main"] = gzip.open(args.outFile, "w") if args.outFile.endswith(".gz") else open(args.outFile, "w")
+if args.outFile: outs["main"] = gzip.open(args.outFile, "wt") if args.outFile.endswith(".gz") else open(args.outFile, "wt")
 else: outs["main"] = sys.stdout
 
 if args.windowDataOutFile:
-    outs["windows"] = gzip.open(args.windowDataOutFile, "w") if args.windowDataOutFile.endswith(".gz") else open(args.windowDataOutFile, "w")
+    outs["windows"] = gzip.open(args.windowDataOutFile, "wt") if args.windowDataOutFile.endswith(".gz") else open(args.windowDataOutFile, "wt")
     if not args.addWindowID: outs["windows"].write("scaffold,start,end,mid,sites,")
     else: outs["windows"].write("windowID,scaffold,start,end,mid,sites,")
     outputWindowData = True
@@ -244,7 +242,7 @@ else:
 #scafs to exclude (only works for window methods)
 
 if args.exclude:
-    scafsFile = open(args.exclude, "rU")
+    scafsFile = open(args.exclude, "rt")
     scafsToExclude = [line.rstrip() for line in scafsFile.readlines()]
     sys.stderr.write("{} scaffolds will be excluded.\n".format(len(scafsToExclude)))
     scafsFile.close()
@@ -252,7 +250,7 @@ else:
     scafsToExclude = None
 
 if args.include:
-    scafsFile = open(args.include, "rU")
+    scafsFile = open(args.include, "rt")
     scafsToInclude = [line.rstrip() for line in scafsFile.readlines()]
     sys.stderr.write("{} scaffolds will be analysed.".format(len(scafsToInclude)))
     scafsFile.close()
