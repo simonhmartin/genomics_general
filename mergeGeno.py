@@ -6,7 +6,7 @@ def openForReading(fileName):
     return gzip.open(fileName, "rt") if fileName.endswith(".gz") else open(fileName, "rt")
 
 def openForWriting(fileName):
-    return gzip.open(fileName, "w") if fileName.endswith(".gz") else open(fileName, "w")
+    return gzip.open(fileName, "wt") if fileName.endswith(".gz") else open(fileName, "wt")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-i", "--inputFile", help="Input file", action = "append", required = True)

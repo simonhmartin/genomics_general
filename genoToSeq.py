@@ -36,16 +36,16 @@ args = parser.parse_args()
 
 #open input
 if args.genoFile:
-    if args.genoFile[-3:] == ".gz": genoFile = gzip.open(args.genoFile, "r")
-    else: genoFile = open(args.genoFile, "r")
+    if args.genoFile[-3:] == ".gz": genoFile = gzip.open(args.genoFile, "rt")
+    else: genoFile = open(args.genoFile, "rt")
 else: genoFile = sys.stdin
 
 #open output (unless doing separate uoutputs for all contigs
 if not args.separateFiles:
     if args.seqFile:
-        if args.seqFile[-3:] == ".gz": seqFile = gzip.open(args.seqFile, "w")
-        elif args.gzip: seqFile = gzip.open(args.seqFile+".gz", "w")
-        else: seqFile = open(args.seqFile, "w")
+        if args.seqFile[-3:] == ".gz": seqFile = gzip.open(args.seqFile, "wt")
+        elif args.gzip: seqFile = gzip.open(args.seqFile+".gz", "wt")
+        else: seqFile = open(args.seqFile, "wt")
     else: seqFile = sys.stdout
 
 #############################
@@ -96,8 +96,8 @@ if args.mode == "windows" or args.mode == "contigs":
             seqFileName += ext
             if args.gzip:
                 seqFileName += ".gz"
-                seqFile = gzip.open(seqFileName, "w")
-            else: seqFile = open(seqFileName, "w")
+                seqFile = gzip.open(seqFileName, "wt")
+            else: seqFile = open(seqFileName, "wt")
         
         #change names if necessary
         

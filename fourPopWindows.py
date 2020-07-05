@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import argparse
 import sys
 import gzip
@@ -5,9 +7,15 @@ import numpy as np
 
 import genomics
 
-from multiprocessing import Process, Queue
-from multiprocessing.queues import SimpleQueue
 from threading import Thread
+
+from multiprocessing import Process
+
+if sys.version_info>=(3,0):
+    from multiprocessing import SimpleQueue
+else:
+    from multiprocessing.queues import SimpleQueue
+
 from time import sleep
 
 
@@ -55,11 +63,11 @@ def sorter(resultQueue, writeQueue, verbose):
     resNumber,result,isGood = resultQueue.get()
     resultsReceived += 1
     if verbose:
-      print >> sys.stderr, "Sorter received result", resNumber
+      sys.stderr.write("Sorter received result " + str(resNumber))
     if resNumber == expect:
       writeQueue.put((resNumber,result,isGood))
       if verbose:
-        print >> sys.stderr, "Result", resNumber, "sent to writer"
+        sys.stderr.write("Result {} sent to writer".format(resNumber))
       expect +=1
       #now check buffer for further results
       while True:
@@ -67,7 +75,7 @@ def sorter(resultQueue, writeQueue, verbose):
           result,isGood = sortBuffer.pop(str(expect))
           writeQueue.put((expect,result,isGood))
           if verbose:
-            print >> sys.stderr, "Result", expect, "sent to writer"
+            sys.stderr.write("Result {} sent to writer".format(expect))
           expect +=1
         except:
           break
@@ -82,7 +90,7 @@ def writer(writeQueue, out, writeFailedWindows=False):
     while True:
         resNumber,result,isGood = writeQueue.get()
         if verbose:
-            print >> sys.stderr, "Writer received result", resNumber
+            sys.stderr.write("Writer received result {}\n".format(resNumber))
         if isGood or writeFailedWindows:
             out.write(result + "\n")
             resultsWritten += 1
@@ -93,7 +101,7 @@ def writer(writeQueue, out, writeFailedWindows=False):
 def checkStats():
   while True:
     sleep(10)
-    print >> sys.stderr, windowsQueued, "windows queued", resultsReceived, "results received", resultsWritten, "results written."
+    sys.stderr.write("\n{} windows queued, {} results received, {} results written.\n".format(windowsQueued, resultsReceived, resultsWritten))
 
 
 ####################################################################################################################
@@ -231,10 +239,10 @@ sampleData = genomics.SampleData(popNames = popNames, popInds = popInds, ploidyD
 
 #open files
 
-if args.genoFile: genoFile = gzip.open(args.genoFile, "r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r")
+if args.genoFile: genoFile = gzip.open(args.genoFile, "rt") if args.genoFile.endswith(".gz") else open(args.genoFile, "rt")
 else: genoFile = sys.stdin
 
-if args.outFile: outFile = gzip.open(args.outFile, "w") if args.outFile.endswith(".gz") else open(args.outFile, "w")
+if args.outFile: outFile = gzip.open(args.outFile, "wt") if args.outFile.endswith(".gz") else open(args.outFile, "wt")
 else: outFile = sys.stdout
 
 
@@ -250,17 +258,17 @@ outFile.write(",".join(outHeaders + stats) + "\n")
 #scafs to exclude
 
 if exclude:
-    scafsFile = open(exclude, "rU")
+    scafsFile = open(exclude, "rt")
     scafsToExclude = [line.rstrip() for line in scafsFile.readlines()]
-    print >> sys.stderr, len(scafsToExclude), "scaffolds will be excluded."
+    print(len(scafsToExclude), "scaffolds will be excluded.", file=sys.stderr) 
     scafsFile.close()
 else:
     scafsToExclude = None
 
 if include:
-    scafsFile = open(include, "rU")
+    scafsFile = open(include, "rt")
     scafsToInclude = [line.rstrip() for line in scafsFile.readlines()]
-    print >> sys.stderr, len(scafsToInclude), "scaffolds will be analysed."
+    print(len(scafsToInclude), "scaffolds will be analysed.", file=sys.stderr) 
     scafsFile.close()
 else:
     scafsToInclude = None
@@ -334,7 +342,7 @@ for window in windowGenerator:
 
 ############################################################################################################################################
 
-print >> sys.stderr, "\nWriting final results...\n"
+print("Writing final results...", file=sys.stderr) 
 while resultsHandled < windowsQueued:
   sleep(1)
 
@@ -343,10 +351,10 @@ sleep(5)
 genoFile.close()
 outFile.close()
 
-print >> sys.stderr, str(windowsQueued), "windows were tested.\n"
-print >> sys.stderr, str(resultsWritten), "results were written.\n"
+print(windowsQueued, "windows were tested.", file=sys.stderr) 
+print(resultsWritten, "results were written.", file=sys.stderr) 
 
-print "\nDone."
+print("\nDone.", file=sys.stderr)
 
 sys.exit()
 
