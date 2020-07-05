@@ -21,7 +21,7 @@ from time import sleep
 '''main worker function. This will watch the inQueue for pods, and pass lines from these pods to be parsed and filtered, before packaging back into a pod and sending on to the resultQueue'''
 def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,alleleOrder,headers,include,exclude,samples,
                     minCalls,minPopCalls,minAlleles,maxAlleles,minPopAlleles,maxPopAlleles,minVarCount,maxHet,minFreq,maxFreq,
-                    HWE_P,HWE_side,popDict,ploidyDict,fixed,nearlyFixedDiff,forcePloidy,thinDist,noTest):
+                    HWE_P,HWE_side,popDict,ploidyDict,fixed,nearlyFixedDiff,forcePloidy,partialToMissing,thinDist,noTest):
     sampleIndices = [headers.index(s) for s in samples]
     #dict of precomputed genotypes
     precompGTs = dict([(s, dict(),) for s in samples]) if precomp else None
@@ -36,7 +36,7 @@ def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,alleleOrde
             objects = line.split()
             if (include and objects[0] not in include) or (exclude and objects[0] in exclude): continue
             site = genomics.GenomeSite(genotypes=[objects[i] for i in sampleIndices], sampleNames=samples, popDict=popDict,
-                                       ploidyDict=ploidyDict, genoFormat=inputGenoFormat, forcePloidy=forcePloidy, precompGTs=precompGTs)
+                                       ploidyDict=ploidyDict, genoFormat=inputGenoFormat, forcePloidy=forcePloidy, partialToMissing=partialToMissing, precompGTs=precompGTs)
             goodSite = True
             if thinDist:
                 pos = int(objects[1])
@@ -148,6 +148,7 @@ parser.add_argument("--keepAllSamples", help="Keep all samples (not just specifi
 parser.add_argument("--ploidy", help="Ploidy for each sample", action = "store", type=int, nargs="+")
 parser.add_argument("--ploidyFile", help="File with samples names and ploidy as columns", action = "store")
 parser.add_argument("--forcePloidy", help="Force genotypes to specified ploidy", action = "store_true")
+parser.add_argument("--partialToMissing", help="Set partially missing genotypes to completely missing", action = "store_true")
 
 #contigs
 parser.add_argument("--include", help="include contigs", nargs = "+", action='store')
@@ -362,7 +363,7 @@ for x in range(nProcs):
                                                   headers,include,exclude,samples,minCalls,minPopCallsDict,minAlleles,maxAlleles,
                                                   minPopAllelesDict,maxPopAllelesDict,minVarCount,maxHet,minFreq,maxFreq,
                                                   HWE_P,HWE_side,popDict,ploidyDict,fixed,args.nearlyFixedDiff,args.forcePloidy,
-                                                  args.thinDist,args.noTest,))
+                                                  args.partialToMissing,args.thinDist,args.noTest,))
     worker.daemon = True
     worker.start()
 
