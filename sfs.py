@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-'''Get frequency spectrum for each defined population, as well as the joint fs for all pairs and trips if requested'''
+'''Get frequency spectrum for each defined population, as well as the joint fs for pairs and trips if requested'''
 
 import sys,random,itertools,gzip,argparse
 from time import sleep
@@ -8,6 +8,7 @@ import numpy as np
 from collections import defaultdict
 import genomics
 import time
+
 
 #function to take genotype data for a site and get the four base counts for each individual, separated by population
 def getPopIndBaseCounts(siteData, genoFormat, allSamples, popDict, ploidyDict):
@@ -24,7 +25,8 @@ def downSampleBaseCounts(baseCounts, N):
 
 ### NOTE ### below is some code to do the downsampling using the hypergeometric distribution
 ### however, it SOMETIMES fails, giving a different number of alleles to the number requested
-### It is not detectably slower than the version above for moderate sample sizes, so I'm sicking with the former
+### It is not detectably slower than the version above for moderate sample sizes
+### I'm only leaving this here as a reminder to myself NOT to use it
 
 #def downSampleBaseCounts(baseCounts, N):
     #return np.random.hypergeometric(baseCounts,baseCounts.sum()-baseCounts, N)
@@ -83,12 +85,12 @@ def getTargetCounts(popBaseCountsArray, outgroupBaseCounts=None, outgroupMono=Tr
     return popBaseCountsArray[:,target]
 
 
-### Below you will see perhaps the cleverest function I will ever write.
-### It creates either a single defaultdict that defaults to zero, for the case of a 1D frequency  spectrum
+### Below you will see perhaps the cleverest piece of Python I will ever write.
+### It creates either a single defaultdict that defaults to zeros, for the case of a 1D frequency spectrum
 ### Or nested dicts according to the number of dimensions specified.
-### Even though it works, I must admit that I onlly understand about 80% why.
 ### These are sparse spectra, because they only contain the values given to them.
 ### using defaultdicts means that the values (and their keys at each dimension) are automatically generated when being set
+### Even though it works, I must admit that I onlly understand about 80% why ;)
 class SparseFS(defaultdict):
     def __init__(self, dimensions=1, intervals=1):
         self.dimensions = dimensions
@@ -197,6 +199,7 @@ parser.add_argument("--suff", help="Suffix for output files", action = "store", 
 parser.add_argument("--pipe", help="Write all outputs to stdout", action = "store_true")
 
 parser.add_argument("--polarized", help="use last population as outgroup for polarizing unfloded spectrum", action='store_true')
+parser.add_argument("--outgroup", help="Outgroup for polarizing frequencies", action = "store", required = False)
 
 #parser.add_argument("--dadiFormat", help="Format output sfs for dadi", action="store_true")
 
@@ -211,6 +214,7 @@ parser.add_argument("--regionsFile", help="File of regions with chrom and option
 
 parser.add_argument("-R", "--report", help="How often to report progress.", action='store', required = False, metavar=("number of lines"), default = 100000)
 parser.add_argument("--verbose", help="Verbose output", action="store_true")
+parser.add_argument("--seed", action='store', type=int, help="Set random seed for subsampling", default=42)
 
 
 args = parser.parse_args()
@@ -224,11 +228,11 @@ include = args.include if args.include else []
 exclude = args.exclude if args.exclude else []
 
 if args.includeFile:
-    with open(args.includeFile, 'r') as includeFile:
+    with open(args.includeFile, 'rt') as includeFile:
         include += includeFile.read().split()
         
 if args.excludeFile:
-    with open(args.excludeFile, 'r') as excludeFile:
+    with open(args.excludeFile, 'rt') as excludeFile:
         exclude += excludeFile.read().split()
 
 if len(include) >= 1:
@@ -247,6 +251,7 @@ report = int(args.report)
 
 verbose = args.verbose
 
+np.random.seed(args.seed)
 
 '###########################################################################################################################'
 
@@ -298,31 +303,32 @@ if args.inputType == "genotypes":
         
         allSamples = [s for popName in popDict for s in popDict[popName]]
     else:
+        #populations not specified, assume all individuals in one pop
         popNames = ["all"]
         popDict = {"all": genoFileReader.names}
     
     for popName in popNames: assert len(popDict[popName]) >= 1, "Population {} has no samples".format(popName) 
-
+    
     allSamples = [s for popName in popDict for s in popDict[popName]]
     
     if args.ploidy is not None:
         ploidy = args.ploidy if len(args.ploidy) != 1 else args.ploidy*len(allSamples)
         assert len(ploidy) == len(allSamples), "Incorrect number of ploidy values supplied."
         ploidyDict = dict(zip(allSamples,ploidy))
-
+    
     elif args.ploidyFile is not None:
         with open(args.ploidyFile, "r") as pf: ploidyDict = dict([[s[0],int(s[1])] for s in [l.split() for l in pf]])
-
+    
     else: ploidyDict = dict(zip(allSamples,[2]*len(allSamples)))
     
-    #samples per pop
+    #number of haplotypes per pop, determines size of the sfs
     nHapDict = dict([(popName, sum([ploidyDict[sample] for sample in popDict[popName]])) for popName in popNames]) 
     
     if args.verbose:
         for popName in popNames: sys.stderr.write("\n"+ popName + ":\n" + ",".join(popDict[popName]) + "\n")
 
 elif args.inputType == "baseCounts":
-    #assume geno file contains comma-separated counts of each base
+    #assume input file contains comma-separated counts of each base
     genoFileReader = genomics.GenoFileReader(inputFile, headerLine=args.header,
                                              scafCol=args.scafCol, posCol=args.posCol, firstSampleCol=args.firstSampleCol)
     if args.pop or args.FSpops:
@@ -360,10 +366,12 @@ sys.stderr.write("\nPopulations:\n")
 sys.stderr.write(" ".join(popNames) + "\n")
 
 #if polarizing, assume last population is outgroup
-if (args.inputType == "genotypes" or args.inputType == "baseCounts") and args.polarized:
-    inPopNames = popNames[:-1]
+if (args.inputType == "genotypes" or args.inputType == "baseCounts") and (args.polarized or args.outgroup):
+    outgroup = args.outgroup if args.outgroup else popNames[-1]
+    inPopNames = [popName for popName in popNames if popName != outgroup]
     sys.stderr.write("\nFrequencies will be polarized assuming outgroup is {}\n".format(popNames[-1]))
 else:
+    #otherwise just consider all is ingroups
     inPopNames = popNames
 
 
@@ -444,8 +452,8 @@ for siteData in genoFileReader.siteBySite():
         if popBaseCountsArray is None or not np.all(popBaseCountsArray.sum(axis=1) == nHapArray): continue
         
         #if polarizing, get the outgroup base counts
-        if args.polarized:
-            outgroupBaseCounts = popIndBaseCounts[popNames[-1]].sum(axis = 0)
+        if outgroup:
+            outgroupBaseCounts = popIndBaseCounts[outgroup].sum(axis = 0)
         else: outgroupBaseCounts = None
         
         popTargetCounts = getTargetCounts(popBaseCountsArray, outgroupBaseCounts = outgroupBaseCounts)
@@ -461,8 +469,8 @@ for siteData in genoFileReader.siteBySite():
             try: popBaseCountsArray = np.array([downSampleBaseCounts(popBaseCountsArray[i,:], subsampleDict[inPopNames[i]]) for i in range(len(inPopNames))])
             except: continue
         
-        if args.polarized:
-            outgroupBaseCounts = np.array(siteData["GTs"][popNames[-1]].split(","), dtype=float).astype(int)
+        if outgroup:
+            outgroupBaseCounts = np.array(siteData["GTs"][outgroup].split(","), dtype=float).astype(int)
         else: outgroupBaseCounts = None
         
         popTargetCounts = getTargetCounts(popBaseCountsArray, outgroupBaseCounts = outgroupBaseCounts)
@@ -471,7 +479,7 @@ for siteData in genoFileReader.siteBySite():
         
     else:
         #otherwise assume the input is just counts of the target base
-        popTargetCounts = np.array([siteData["GTs"][name] for name in popNames])
+        popTargetCounts = np.array([siteData["GTs"][name] for name in inPopNames])
     
     #if we get here we are going to add this data to the SFS
     popTargetCountsDict = dict(zip(inPopNames, popTargetCounts))
