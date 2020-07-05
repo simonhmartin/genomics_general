@@ -2259,18 +2259,21 @@ def parseRegionList(regionList):
 
 
 class Intervals():
-    def __init__(self, regions=None, tuples=None, chroms=None, starts=None, ends=None):
+    def __init__(self, regions=None, tuples=None, chroms=None, starts=None, ends=None, type=int):
         if regions is not None:
             tuples = [parseRegionText(r) for r in regions]
         if tuples is not None:
-            self.chroms = np.array([t[0] for t in tuples])
-            self.starts = np.array([t[1] if len(t)>1 and t[1] is not None else 0 for t in tuples], dtype=float)
-            self.ends = np.array([t[2] if len(t)>2 and t[2] is not None else t[1] if len(t)>1 and t[1] is not None else np.inf for t in tuples], dtype=float)
+            self.chroms = np.array([t[0] for t in tuples], dtype=str)
+            self.starts = np.array([t[1] if len(t)>1 and t[1] is not None else 0 for t in tuples], dtype=type)
+            self.ends = np.array([t[2] if len(t)>2 and t[2] is not None else t[1] if len(t)>1 and t[1] is not None else np.inf for t in tuples], dtype=type)
         else:
-            self.chroms = np.array(chroms, dtype=int) if chroms is not None else np.repeat("", len(starts))
-            self.starts = np.array(starts, dtype=int) if starts is not None else np.repeat(0, len(chroms))
-            self.ends = np.array(ends) if ends is not None else np.array(starts) if starts is not None else np.repeat(np.inf, len(chroms))
+            self.chroms = np.array(chroms, dtype=str) if chroms is not None else np.repeat("", len(starts))
+            self.starts = np.array(starts, dtype=type) if starts is not None else np.repeat(0, len(chroms))
+            self.ends = np.array(ends, dtype=type) if ends is not None else np.array(starts, dtype=type) if starts is not None else np.repeat(np.inf, len(chroms))
             assert len(self.starts)==len(self.ends)==len(self.chroms)
+        
+        self.l = len(self.starts)
+        self.chromSet = set(self.chroms)
     
     def containsPoint(self, pos, chrom=""):
         return (self.chroms == chrom) & (self.starts <= pos) & (pos <= self.ends)
@@ -2281,4 +2284,42 @@ class Intervals():
                                     int(self.starts[i]) if self.starts[i] > 0 else "",
                                     "-" if self.starts[i] > 0 and self.ends[i] < np.inf else "",
                                     int(self.ends[i]) if self.starts[i] > 0 and self.ends[i] < np.inf else "") for i in range(len(self.starts))]
+    
+    def sort(self, positionsOnly=False):
+        #first sort by chroms
+        if len(self.chromSet) > 1 and not positionsOnly:
+            idx = np.argsort(self.chroms)
+            self.chroms = self.chroms[idx]
+            self.starts = self.starts[idx]
+            self.ends = self.ends[idx]
+        
+        #now sort positions within each chromosome
+        uniqueChroms, chromIdx = uniqueIndices(self.chroms, preserveOrder=True)
+        
+        for idx in chromIdx:
+            #sort the intervals of this chromosome, but preserve their indices in the total object
+            subIdx = np.lexsort((self.ends[idx],self.starts[idx]))
+            self.starts[idx] = self.starts[idx][subIdx]
+            self.ends[idx] = self.ends[idx][subIdx]
+    
+    def reduced(self, skipSort = False):
+        if not skipSort: self.sort()
+        newChroms = [self.chroms[0]]
+        newStarts = [self.starts[0]]
+        newEnds = [self.ends[0]]
+        for i in range(1, self.l):
+            #If it overlaps it will be merged in
+            if self.chroms[i] == newChroms[-1] and self.starts[i] < newEnds[-1]:
+                #it does overlap, but only update end if it is larger
+                if self.ends[i] > newEnds[-1]: newEnds[-1] = self.ends[i]
+                #it overlapped, so no need to start a new interval
+                continue
+            
+            #If we get here, it does not overlap, so start a new interval
+            newChroms.append(self.chroms[i])
+            newStarts.append(self.starts[i])
+            newEnds.append(self.ends[i])
+        
+        #return a new intervals object
+        return Intervals(chroms=newChroms, starts=newStarts, ends = newEnds)
 
