@@ -270,6 +270,7 @@ def addArgs(parser, requireInfile=False):
     parser.add_argument("--excludeDuplicates", help="Only include the first in a series of duplicated positions", action = "store_true")
     parser.add_argument("--simplifyALT", help="Simplify multi-site alternate alleles using CIGAR (as in Freebayes output)", action = "store_true")
     parser.add_argument("--expandMulti", help="Expand multi-site alleles (also Sets simplifyALT to True)", action = "store_true")
+    parser.add_argument("--maxREFlen", help="Maximum length for refernece allele", action = "store", type=int)
     
     parser.add_argument("--ploidy", help="Ploidy for each sample", action = "store", type=int, default=2)
     parser.add_argument("--ploidyFile", help="File with samples names and ploidy as columns", action = "store")
@@ -360,6 +361,7 @@ if __name__ == "__main__":
     for vcfSite in parseVcfSites(inFile, headData["mainHeaders"], excludeDuplicates=args.excludeDuplicates, simplifyALT=simplifyALT):
         if (exclude and vcfSite.CHROM in exclude) or (include and vcfSite.CHROM not in include): continue
         if args.minQual and canFloat(vcfSite.QUAL) and float(vcfSite.QUAL) < args.minQual: continue
+        if args.maxREFlen and len(vcfSite.REF) > args.maxREFlen: continue
         if args.field is not None: output = vcfSite.getGenoField(args.field,samples=samples, missing=args.missing)
         else:
             output = vcfSite.getGenotypes(gtFilters,asList=True,withPhase=True,samples=samples,missing=args.missing,
@@ -370,7 +372,7 @@ if __name__ == "__main__":
                 for x in range(vcfSite.REFlen):
                     outFile.write(args.outSep.join([vcfSite.CHROM, str(vcfSite.POS + x)] + [o[x] for o in output]) + "\n")
                 continue
-            
+        
         outFile.write(args.outSep.join([vcfSite.CHROM, str(vcfSite.POS)] + output) + "\n")
     
     outFile.close()

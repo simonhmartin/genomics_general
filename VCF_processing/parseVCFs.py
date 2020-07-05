@@ -34,7 +34,7 @@ def tabixStream(fileName, region = None, chrom = None, start=None, end=None, hea
     
     return iter(p.communicate()[0].strip().split("\n"))
 
-def parseAndMerge(fileNames, headData, scaffold, start, end, minQual, field, gtFilters, method, skipIndels, missing,
+def parseAndMerge(fileNames, headData, scaffold, start, end, minQual, maxREFlen, field, gtFilters, method, skipIndels, missing,
                   excludeDuplicates, simplifyALT, _samples_, allMissing, mustMatchREFlen, keepPartial, ploidyDict,
                   ploidyMismatchToMissing, outSep, verbose):
     n = len(fileNames)
@@ -66,6 +66,7 @@ def parseAndMerge(fileNames, headData, scaffold, start, end, minQual, field, gtF
             if currentSites[x] and currentSites[x].POS == pos:
                 present=True
                 if minQual and canFloat(currentSites[x].QUAL) and float(currentSites[x].QUAL) < minQual: present = False
+                if present and maxREFlen and len(vcfSite.REF) > maxREFlen: present = False
             if present:
                 if field: output = vcfSite.getGenoField(field,samples=samples[x], missing=missing)
                 else:
@@ -88,7 +89,7 @@ def parseAndMerge(fileNames, headData, scaffold, start, end, minQual, field, gtF
     return outLines #and thats it. Move on to the next site in the genome
 
 
-def parseAndMergeWrapper(inQueue, outQueue, fileNames, minQual, field, gtFilters, method, skipIndels, missing,
+def parseAndMergeWrapper(inQueue, outQueue, fileNames, minQual, maxREFlen, field, gtFilters, method, skipIndels, missing,
                          excludeDuplicates, simplifyALT, _samples_, allMissing, mustMatchREFlen, keepPartial, ploidyDict,
                          ploidyMismatchToMissing, outSep, verbose):
     while True:
@@ -99,7 +100,7 @@ def parseAndMergeWrapper(inQueue, outQueue, fileNames, minQual, field, gtFilters
             outQueue.put((-1,None,)) # this is the way of telling everything we're done
             break
         
-        parsedLines = parseAndMerge(fileNames, headData, scaffold, start, end, minQual, field, gtFilters, method, skipIndels, missing,
+        parsedLines = parseAndMerge(fileNames, headData, scaffold, start, end, minQual, maxREFlen, field, gtFilters, method, skipIndels, missing,
                                     excludeDuplicates, simplifyALT, _samples_, allMissing, mustMatchREFlen, keepPartial, ploidyDict,
                                     ploidyMismatchToMissing, outSep, verbose)
         outQueue.put((windowNumber, parsedLines,))
@@ -229,7 +230,7 @@ else: outFile = sys.stdout
 ###parse fai file
 
 if args.fai:
-    with open(args.fai, "r") as fai: scafLens = [(s,int(l)) for s,l in [ln.split()[:2] for ln in fai]]
+    with open(args.fai, "rt") as fai: scafLens = [(s,int(l)) for s,l in [ln.split()[:2] for ln in fai]]
     scafs = [x[0] for x in scafLens]
     scafLens = dict(scafLens)
 else:
@@ -260,8 +261,9 @@ This one reads from the pod queue, passes each line some analysis function(s), g
 workerThreads = []
 sys.stderr.write("\nStarting {} worker threads\n".format(args.threads))
 for x in range(args.threads):
-    workerThread = Process(target=parseAndMergeWrapper,args=(inQueue, outQueue, args.inFile, args.minQual, args.field, gtFilters, args.method, args.skipIndels, missing,
-                                                             args.excludeDuplicates, args.simplifyALT, _samples_, allMissing, mustMatchREFlen, args.keepPartial, ploidyDict,
+    workerThread = Process(target=parseAndMergeWrapper,args=(inQueue, outQueue, args.inFile, args.minQual, args.maxREFlen args.field, gtFilters,
+                                                             args.method, args.skipIndels, missing, args.excludeDuplicates, args.simplifyALT,
+                                                             _samples_, allMissing, mustMatchREFlen, args.keepPartial, ploidyDict,
                                                              args.ploidyMismatchToMissing, args.outSep, args.verbose,))
     workerThread.daemon = True
     workerThread.start()
