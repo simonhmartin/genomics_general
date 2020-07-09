@@ -369,7 +369,7 @@ sys.stderr.write(" ".join(popNames) + "\n")
 if (args.inputType == "genotypes" or args.inputType == "baseCounts") and (args.polarized or args.outgroup):
     outgroup = args.outgroup if args.outgroup else popNames[-1]
     inPopNames = [popName for popName in popNames if popName != outgroup]
-    sys.stderr.write("\nFrequencies will be polarized assuming outgroup is {}\n".format(popNames[-1]))
+    sys.stderr.write("\nFrequencies will be polarized assuming outgroup is {}\n".format(outgroup))
 else:
     #otherwise just consider all is ingroups
     inPopNames = popNames
