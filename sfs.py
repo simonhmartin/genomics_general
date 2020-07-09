@@ -219,7 +219,7 @@ parser.add_argument("--seed", action='store', type=int, help="Set random seed fo
 
 args = parser.parse_args()
 
-if not (args.polarized | args.outgroup) and args.inputType != "targetCounts":
+if (args.polarized == False & args.outgroup == None) and args.inputType != "targetCounts":
     sys.stderr.write("\nNo outgroup provided. Minor allele frequency will be used.\n")
 
 subsample = args.subsample
