@@ -144,7 +144,6 @@ for line in inFile:
                 outFile.write(outsep.join(elements) + "\n")
             
             else:
-                break
                 failFile.write("#BROKEN\n")
                 failFile.write(outsep.join(elements) + "\n")
                 
