@@ -71,7 +71,7 @@ scaffold1  1        A       G       R
 | Wndow Type | Description |
 | :-----------: | ----------- | 
 | `coordinate`     | Windows will cover a fixed range in the genome, which is defined as the window size. If there is missing data, this can lead to variable numbers of sites used for each window. |
-| `sites`        | Each window will have the same number of sites. If there is missing data, this can lead to different absolute sizes for windows in terms of genome coordiantes. |
+| `sites`        | Each window will have the same number of sites. If there is missing data, this can lead to different absolute sizes for windows in terms of genome coordinates. |
 | `predefined`          | This will analyse predefined windows provided using the `--windCoords` flag. |
 
 * You can either include sample names after the population name, separated by commas, or provide only the population name, along with a populations file, with the flag `--popsFile `, which has two columns: the first gives sample names and teh second gives population name:
@@ -97,7 +97,7 @@ D4  popD
 ___
 ## Distance matrix
 
-The script `distMat.py`	 computes a distance matrix among all pairs of individuals. This can be computed either for the entire infput file or in windows, as in the popgenWindows script above. This works for samples of any ploidy or mix of ploidies. For ploidy > 1, the pairwise diatance will be the average diatance among all haplotypes in the two individuals.
+The script `distMat.py`	computes a distance matrix among all pairs of individuals. This can be computed either for the entire input file or in windows, as in the popgenWindows script above. This works for samples of any ploidy or mix of ploidies. For ploidy > 1, the pairwise diatance will be the average diatance among all haplotypes in the two individuals.
 
 
 #### Example Command
