@@ -1,4 +1,4 @@
-import sys, argparse, gzip
+import sys, argparse, gzip, time
 
 #############
 
@@ -17,7 +17,7 @@ parser.add_argument("--unionMin", help="Minimum files represented for menthod un
 parser.add_argument("--mustIncludeFirst", help="The first n files MUST be present", action = "store", type=int, default=0)
 parser.add_argument("--outSep", help="Output file separator", action = "store", default = "\t")
 parser.add_argument("--missing", help="Missing genotype for method union or all", action = "store", default = "N")
-parser.add_argument("--outputOnly", help="Which output files to include in output", action = "store", type=int, nargs="+")
+parser.add_argument("--outputOnly", help="Which output files to include in output (1 based)", action = "store", type=int, nargs="+")
 parser.add_argument('--verbose', help="Verbose output", action='store_true')
 
 args = parser.parse_args()
@@ -88,4 +88,4 @@ for scaf in scafs:
         #and thats it. Move on to the next site in the genome
 
 for f in files:
-  f.close
+    f.close()
