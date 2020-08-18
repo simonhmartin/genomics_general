@@ -15,6 +15,10 @@ import genomics
     #try: return numbers[i,:][nanMask[i,:]].max()
     #except: return np.NaN
 
+def quantile(x, q):
+    try: return np.quantile(x, q)
+    except: return np.NaN
+
 ####################################################################################################################
 
 parser = argparse.ArgumentParser()
@@ -26,6 +30,10 @@ parser.add_argument("-m", "--minSites", help="Minumum good sites per window", ty
 parser.add_argument("-O", "--overlap", help="Overlap for sites sliding window", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-D", "--maxDist", help="Maximum span distance for sites window", type=int, action = "store", required = False)
 parser.add_argument("--windCoords", help="Window coordinates file (scaffold start end)", required = False)
+
+parser.add_argument("--stats", help="Which statistics to compute", action = "store", nargs = "+",
+                    choices = ("mean","median", "min", "max","sd", "sum", "q5", "q10", "q25", "q75", "q90", "q95"),
+                    default = ("mean","median", "min", "max","sd", "sum",))
 
 parser.add_argument("-i", "--inFile", help="Input genotypes file", required = False)
 parser.add_argument("-o", "--outFile", help="Results file", required = False)
@@ -131,7 +139,7 @@ for window in windowGenerator:
     #if its the first window, get the headings and write
     if n == 0:
         for name in window.names:
-            outFile.write(","+",".join([name + "_mean",name + "_median", name + "_min", name + "_max", name + "_sd", name + "_sum"]))
+            outFile.write(","+",".join([name + "_" + stat for stat in args.stats]))
         outFile.write("\n")
     
     if windType == "coordinate" or windType == "predefined":
@@ -145,15 +153,27 @@ for window in windowGenerator:
         numbers = np.array([numDict[name] for name in window.names], dtype = "float")
         nanMask = ~np.isnan(numbers)
         
-        outFile.write(",".join([",".join([str(x) for x in [numbers[i,:][nanMask[i,:]].mean(),
-                                                           np.median(numbers[i,:][nanMask[i,:]]),
-                                                           np.min(numbers[i,:][nanMask[i,:]]),
-                                                           np.max(numbers[i,:][nanMask[i,:]]),
-                                                           np.std(numbers[i,:][nanMask[i,:]]),
-                                                           np.sum(numbers[i,:][nanMask[i,:]])]]) for i in range(window.n)]))
+        output = []
+        
+        for i in range(window.n):
+            for stat in args.stats:
+                if stat == "mean": output.append(str(numbers[i,:][nanMask[i,:]].mean()))
+                elif stat == "median": output.append(str(np.median(numbers[i,:][nanMask[i,:]])))
+                elif stat == "min": output.append(str(np.min(numbers[i,:][nanMask[i,:]])))
+                elif stat == "max": output.append(str(np.max(numbers[i,:][nanMask[i,:]])))
+                elif stat == "sd": output.append(str(np.std(numbers[i,:][nanMask[i,:]])))
+                elif stat == "sum": output.append(str(np.sum(numbers[i,:][nanMask[i,:]])))
+                elif stat == "q5": output.append(str(quantile(numbers[i,:][nanMask[i,:]], 0.05)))
+                elif stat == "q10": output.append(str(quantile(numbers[i,:][nanMask[i,:]], 0.1)))
+                elif stat == "q25": output.append(str(quantile(numbers[i,:][nanMask[i,:]], 0.25)))
+                elif stat == "q75": output.append(str(quantile(numbers[i,:][nanMask[i,:]], 0.75)))
+                elif stat == "q90": output.append(str(quantile(numbers[i,:][nanMask[i,:]], 0.9)))
+                elif stat == "q95": output.append(str(quantile(numbers[i,:][nanMask[i,:]], 0.95)))
+        
+        outFile.write(",".join(output))
     
-    else: outFile.write(",".join([",".join([str(np.NaN)]*5) for i in range(window.n)]))
-
+    else: outFile.write(",".join([str(np.NaN)]*window.n*len(args.stats)))
+    
     outFile.write("\n")
     
     n+=1
