@@ -29,6 +29,11 @@ def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, mi
                   analysis, stats, addWindowID=False, roundTo=4):
     while True:
         windowNumber,window = windowQueue.get() # retrieve window
+        
+        if windowNumber == -1:
+            resultQueue.put((-1,None,False)) # this is the way of telling everything we're done
+            break
+        
         if windType == "coordinate" or windType == "predefined":
             scaf,start,end,mid,sites = (window.scaffold, window.limits[0], window.limits[1], window.midPos(),window.seqLen())
         else: scaf,start,end,mid,sites = (window.scaffold, window.firstPos(), window.lastPos(),window.midPos(),window.seqLen())
@@ -68,42 +73,81 @@ def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, mi
 
 
 '''a function that watches the result queue and sorts results. This should be a generic funcion regardless of the result, as long as the first object is the result number, and this increases consecutively.'''
-def sorter(resultQueue, writeQueue, verbose):
-  global resultsReceived
-  sortBuffer = {}
-  expect = 0
-  while True:
-    resNumber,result,isGood = resultQueue.get()
-    resultsReceived += 1
-    if verbose:
-      sys.stderr.write("Sorter received result " + str(resNumber))
-    if resNumber == expect:
-      writeQueue.put((resNumber,result,isGood))
-      if verbose:
-        sys.stderr.write("Result {} sent to writer".format(resNumber))
-      expect +=1
-      #now check buffer for further results
-      while True:
-        try:
-          result,isGood = sortBuffer.pop(str(expect))
-          writeQueue.put((expect,result,isGood))
-          if verbose:
-            sys.stderr.write("Result {} sent to writer".format(expect))
-          expect +=1
-        except:
-          break
-    else:
-      #otherwise this line is ahead of us, so add to buffer dictionary
-      sortBuffer[str(resNumber)] = (result,isGood)
+#def sorter(resultQueue, writeQueue, verbose):
+  #global resultsReceived
+  #sortBuffer = {}
+  #expect = 0
+    #threadsComplete = 0 #this will keep track of the worker threads and once they're all done this thread will break
+  #while True:
+    #resNumber,result,isGood = resultQueue.get()
+    #resultsReceived += 1
+    #if verbose:
+      #sys.stderr.write("Sorter received result " + str(resNumber))
+    #if resNumber == expect:
+      #writeQueue.put((resNumber,result,isGood))
+      #if verbose:
+        #sys.stderr.write("Result {} sent to writer".format(resNumber))
+      #expect +=1
+      ##now check buffer for further results
+      #while True:
+        #try:
+          #result,isGood = sortBuffer.pop(str(expect))
+          #writeQueue.put((expect,result,isGood))
+          #if verbose:
+            #sys.stderr.write("Result {} sent to writer".format(expect))
+          #expect +=1
+        #except:
+          #break
+    #else:
+      ##otherwise this line is ahead of us, so add to buffer dictionary
+      #sortBuffer[str(resNumber)] = (result,isGood)
+
+def sorter(resultQueue, writeQueue, verbose, nWorkerThreads):
+    global resultsReceived
+    sortBuffer = {}
+    expect = 0
+    threadsComplete = 0 #this will keep track of the worker threads and once they're all done this thread will break
+    while True:
+        windowNumber,result,isGood = resultQueue.get()
+        #check if we're done
+        if windowNumber == -1: threadsComplete += 1
+        if threadsComplete == nWorkerThreads:
+            writeQueue.put((-1,None,False))
+            break #this is the way of telling everything we're done
+        resultsReceived += 1
+        if verbose:
+            sys.stderr.write("Sorter received window {}\n".format(windowNumber))
+        if windowNumber == expect:
+            writeQueue.put((windowNumber,result,isGood))
+            if verbose:
+                sys.stderr.write("Slice {} sent to writer\n".format(windowNumber))
+            expect +=1
+            #now check buffer for further results
+            while True:
+                try:
+                    result,isGood = sortBuffer.pop(str(expect))
+                    writeQueue.put((expect,result,isGood))
+                    if verbose:
+                        sys.stderr.write("Slice {} sent to writer\n".format(expect))
+                    expect +=1
+                except:
+                    break
+        else:
+            #otherwise this line is ahead of us, so add to buffer dictionary
+            sortBuffer[str(windowNumber)] = (result,isGood)
+
+
 
 '''a writer function that writes the sorted result. This is also generic'''
 def writer(writeQueue, out, writeFailedWindows=False):
     global resultsWritten
     global resultsHandled
     while True:
-        resNumber,result,isGood = writeQueue.get()
+        windowNumber,result,isGood = writeQueue.get()
+        #check if we're done
+        if windowNumber == -1: break
         if verbose:
-            sys.stderr.write("Writer received result {}\n".format(resNumber))
+            sys.stderr.write("Writer received result {}\n".format(windowNumber))
         if isGood or writeFailedWindows:
             out.write(result + "\n")
             resultsWritten += 1
@@ -150,7 +194,7 @@ parser.add_argument("--exclude", help="File of scaffolds to exclude", required =
 parser.add_argument("--include", help="File of scaffolds to analyse", required = False)
 parser.add_argument("-f", "--genoFormat", help="Format of genotypes in genotypes file", action='store', choices = ("phased","pairs","haplo","diplo"), required = True)
 
-parser.add_argument("-T", "--Threads", help="Number of worker threads for parallel processing", type=int, default=1, required = False, metavar="threads")
+parser.add_argument("-T", "--threads", help="Number of worker threads for parallel processing", type=int, default=1, required = False, metavar="threads")
 parser.add_argument("--verbose", help="Verbose output", action="store_true")
 parser.add_argument("--addWindowID", help="Add window name or number as first column", action="store_true")
 parser.add_argument("--writeFailedWindows", help="Write output even for windows with too few sites.", action="store_true")
@@ -198,7 +242,6 @@ exclude = args.exclude
 include = args.include
 
 #other
-threads = args.Threads
 verbose = args.verbose
 
 
@@ -336,30 +379,32 @@ writeQueue = SimpleQueue()
 '''start worker Processes for analysis. The comand should be tailored for the analysis wrapper function
 of course these will only start doing anything after we put data into the line queue
 the function we call is actually a wrapper for another function.(s) This one reads from the line queue, passes to some analysis function(s), gets the results and sends to the result queue'''
-for x in range(threads):
-    worker = Process(target=stats_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, sampleData, minSites,
+workerThreads = []
+sys.stderr.write("\nStarting {} worker threads\n".format(args.threads))
+for x in range(args.threads):
+    workerThread = Process(target=stats_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, sampleData, minSites,
                                                     args.analysis, stats, args.addWindowID,args.roundTo))
-    worker.daemon = True
-    worker.start()
-    sys.stderr.write("started worker {}\n".format(x))
+    workerThread.daemon = True
+    workerThread.start()
+    workerThreads.append(workerThread)
 
 
 '''thread for sorting results'''
-worker = Thread(target=sorter, args=(resultQueue,writeQueue,verbose,))
-worker.daemon = True
-worker.start()
+sorterThread = Thread(target=sorter, args=(resultQueue,writeQueue,verbose,args.threads,))
+sorterThread.daemon = True
+sorterThread.start()
 
 '''start thread for writing the results'''
-worker = Thread(target=writer, args=(writeQueue, outFile, args.writeFailedWindows,))
-worker.daemon = True
-worker.start()
+writerThread = Thread(target=writer, args=(writeQueue, outFile, args.writeFailedWindows,))
+writerThread.daemon = True
+writerThread.start()
 
 
 '''start background Thread that will run a loop to check run statistics and print
 We use thread, because I think this is necessary for a process that watches global variables like linesTested'''
-worker = Thread(target=checkStats)
-worker.daemon = True
-worker.start()
+checkerThread = Thread(target=checkStats)
+checkerThread.daemon = True
+checkerThread.start()
 
 
 
@@ -384,11 +429,16 @@ for window in windowGenerator:
 
 ############################################################################################################################################
 
-sys.stderr.write("\nWriting final results...\n")
-while resultsHandled < windowsQueued:
-  sleep(1)
+#Now we send completion signals to all worker threads
+for x in range(args.threads):
+    windowQueue.put((-1,None,)) # -1 tells the threads to break
 
-sleep(5)
+sys.stderr.write("\nWaiting for all threads to finish\n".format(args.threads))
+for x in range(len(workerThreads)):
+    workerThreads[x].join()
+
+sorterThread.join()
+writerThread.join()
 
 genoFile.close()
 outFile.close()
