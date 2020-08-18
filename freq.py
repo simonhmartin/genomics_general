@@ -43,7 +43,9 @@ def freqs_wrapper(inQueue, resultQueue, headerLine, genoFormat, sampleData, targ
         
         #make alignment objects
         aln = genomics.genoToAlignment(window.seqDict(), sampleData, genoFormat = genoFormat)
-        popAlns = dict(zip(sampleData.popNames, [aln.subset(groups=[pop]) for pop in sampleData.popNames]))
+        popAlns = dict([(popName, aln.subset(groups=[popName])) for popName in sampleData.popNames])
+        #this above replaced this below, as it should be faster
+        #popAlns = dict(zip(sampleData.popNames, [aln.subset(groups=[pop]) for pop in sampleData.popNames]))
         
         #if there is no target, fetch all base counts
         
@@ -66,7 +68,7 @@ def freqs_wrapper(inQueue, resultQueue, headerLine, genoFormat, sampleData, targ
                 baseColumns = np.array([genomics.derivedAllele(inAln.numArray[:,i][inAln.nanMask[:,i]],
                                                             popAlns[outgroup].numArray[:,i][popAlns[outgroup].nanMask[:,i]],
                                                             numeric=True)
-                                        for i in xrange(aln.l)]).reshape([aln.l,1])
+                                        for i in range(aln.l)]).reshape([aln.l,1])
                 
             else:
                 #otherwise get minor allele.
