@@ -220,8 +220,6 @@ else:
     missing = args.missing if args.missing else "N"
     allMissing = [["/".join([missing]*ploidyDict[sample]) for sample in samples] for samples in _samples_]
 
-print(allMissing)
-
 ##########################################################################################################
 
 if args.outFile: outFile = gzip.open(args.outFile, "wt") if args.outFile.endswith(".gz") else open(args.outFile, "wt")
@@ -261,7 +259,7 @@ This one reads from the pod queue, passes each line some analysis function(s), g
 workerThreads = []
 sys.stderr.write("\nStarting {} worker threads\n".format(args.threads))
 for x in range(args.threads):
-    workerThread = Process(target=parseAndMergeWrapper,args=(inQueue, outQueue, args.inFile, args.minQual, args.maxREFlen args.field, gtFilters,
+    workerThread = Process(target=parseAndMergeWrapper,args=(inQueue, outQueue, args.inFile, args.minQual, args.maxREFlen, args.field, gtFilters,
                                                              args.method, args.skipIndels, missing, args.excludeDuplicates, args.simplifyALT,
                                                              _samples_, allMissing, mustMatchREFlen, args.keepPartial, ploidyDict,
                                                              args.ploidyMismatchToMissing, args.outSep, args.verbose,))
