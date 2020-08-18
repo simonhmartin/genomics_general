@@ -398,10 +398,17 @@ def forceHomo(sequence):
 
 #make haploid sequences N-ploid
 def haploToPhased(seqs, seqNames=None, ploidy=2, randomPhase=False):
-    #phase if ploidy is not 1
-    if ploidy is not 1:
-        _ploidy_ = makeList(ploidy)
-        Nseqs = len(seqs)
+    _ploidy_ = makeList(ploidy)
+    Nseqs = len(seqs)
+    #if ploidy is 1 for all sequences, just return them
+    if set(_ploidy_) == {1}:
+        #if seqNames provided, return a tuple
+        if seqNames != None:
+            assert len(seqNames) == Nseqs, "incorrect number of sequence names"
+            return (seqs, seqNames,)
+        #otherwise just return the seqs
+        return seqs
+    else:
         if len(_ploidy_) == 1:
             assert Nseqs % _ploidy_[0] == 0, "Sequence number must be divizable by ploidy"
             _ploidy_ = _ploidy_*(Nseqs/_ploidy_[0])
@@ -1094,9 +1101,9 @@ def LD(basesA, basesB, ancA=None, ancB=None):
 
 def uniqueIndices(things, preserveOrder = False, asDict=False):
     T,X,I = np.unique(things, return_index=True, return_inverse=True)
-    indices = np.array([np.where(I == i)[0] for i in range(len(T))])
+    indices = [np.where(I == i)[0] for i in range(len(T))]
     order = np.argsort(X) if preserveOrder else np.arange(len(X))
-    return dict(zip(T[order], indices[order])) if asDict else [T[order], indices[order]]
+    return dict(zip(T[order], [indices[i] for i in order])) if asDict else [T[order], [indices[i] for i in order]]
 
 def maxLDphase(aln, sampleIndices=None, stat = "r2"):
     if sampleIndices is None:
@@ -2309,7 +2316,7 @@ class Intervals():
         newEnds = [self.ends[0]]
         for i in range(1, self.l):
             #If it overlaps it will be merged in
-            if self.chroms[i] == newChroms[-1] and self.starts[i] < newEnds[-1]:
+            if self.chroms[i] == newChroms[-1] and self.starts[i] <= newEnds[-1]:
                 #it does overlap, but only update end if it is larger
                 if self.ends[i] > newEnds[-1]: newEnds[-1] = self.ends[i]
                 #it overlapped, so no need to start a new interval
