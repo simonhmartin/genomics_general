@@ -114,8 +114,8 @@ for line in inFile:
     if not line.startswith("#"):
         elements = line.strip().split(sep)
         scaf = elements[scafCol-1]
-        start = int(elements[startCol-1])
-        end = int(elements[endCol-1])
+        start = float(elements[startCol-1])
+        end = float(elements[endCol-1])
         strand = elements[strandCol-1] if strandCol else "+"
         assert strand is "+" or strand is "-"
         if scaf in transfers:
