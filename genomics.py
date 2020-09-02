@@ -1882,10 +1882,10 @@ def parseGenoFile(genoFile, headerLine=None, names = None, includePositions = Fa
 
 
 #sliding window generator function
-def slidingCoordWindows(genoFile, windSize, stepSize, names = None, splitPhased=False, ploidy = None,
+def slidingCoordWindows(genoFile, windSize, stepSize, headerLine=None, names = None, splitPhased=False, ploidy = None,
                         include = None, exclude = None, skipDeepcopy = False):
     #file reader
-    reader=GenoFileReader(genoFile, splitPhased=splitPhased, ploidy=ploidy)
+    reader=GenoFileReader(genoFile, headerLine, splitPhased=splitPhased, ploidy=ploidy)
     #get names
     if names:
         extractSpecificGTs = True
@@ -1943,11 +1943,11 @@ def slidingCoordWindows(genoFile, windSize, stepSize, names = None, splitPhased=
 
 
 #sliding window generator function
-def slidingSitesWindows(genoFile, windSites, overlap, maxDist = np.inf, minSites = None, names = None,
+def slidingSitesWindows(genoFile, windSites, overlap, maxDist = np.inf, minSites = None, headerLine=None, names = None,
                         splitPhased=False, ploidy=None, include = None, exclude = None, skipDeepcopy = False):
     if not minSites: minSites = windSites #if minSites < eindSites, windows at ends of scaffolds can still be emmitted
     #file reader
-    reader=GenoFileReader(genoFile, splitPhased=splitPhased, ploidy=ploidy)
+    reader=GenoFileReader(genoFile, headerLine, splitPhased=splitPhased, ploidy=ploidy)
     #get names
     if names:
         extractSpecificGTs = True
@@ -2023,12 +2023,12 @@ def slidingSitesWindows(genoFile, windSites, overlap, maxDist = np.inf, minSites
 
 
 #window generator function using pre-defined coordinates
-def predefinedCoordWindows(genoFile, windCoords, names = None, splitPhased=False, ploidy=None, skipDeepcopy = False):
+def predefinedCoordWindows(genoFile, windCoords, headerLine=None, names = None, splitPhased=False, ploidy=None, skipDeepcopy = False):
     #get the order of scaffolds
     allScafs = [w[0] for w in windCoords]
     scafs = sorted(set(allScafs), key=lambda x: allScafs.index(x))
     #file reader
-    reader=GenoFileReader(genoFile, splitPhased=splitPhased, ploidy=ploidy)
+    reader=GenoFileReader(genoFile, headerLine, splitPhased=splitPhased, ploidy=ploidy)
     #get names
     if names:
         extractSpecificGTs = True
@@ -2087,9 +2087,9 @@ def predefinedCoordWindows(genoFile, windCoords, names = None, splitPhased=False
 
 #function to read blocks of n lines
 #sliding window generator function
-def nonOverlappingSitesWindows(genoFile, windSites, names = None, splitPhased=False, ploidy=None, include = None, exclude = None):
+def nonOverlappingSitesWindows(genoFile, windSites, headerLine=None, names = None, splitPhased=False, ploidy=None, include = None, exclude = None):
     #file reader
-    reader=GenoFileReader(genoFile, splitPhased=splitPhased, ploidy=ploidy)
+    reader=GenoFileReader(genoFile, headerLine, splitPhased=splitPhased, ploidy=ploidy)
     #get names
     if names:
         extractSpecificGTs = True

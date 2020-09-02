@@ -38,6 +38,8 @@ parser.add_argument("--stats", help="Which statistics to compute", action = "sto
 parser.add_argument("-i", "--inFile", help="Input genotypes file", required = False)
 parser.add_argument("-o", "--outFile", help="Results file", required = False)
 
+parser.add_argument("--header", help="Header text if no header in input", action = "store")
+
 parser.add_argument("--columns", help="Columns to analyse, separated by spaces", required = False, nargs="+")
 
 parser.add_argument("--exclude", help="File of scaffolds to exclude", required = False)
@@ -123,14 +125,19 @@ else:
 
 #get windows and analyse
 if windType == "coordinate": windowGenerator = genomics.slidingCoordWindows(inFile, windSize, stepSize,
-                                                                            args.columns,
+                                                                            headerLine = args.header,
+                                                                            names = args.columns,
                                                                             include = scafsToInclude,
                                                                             exclude = scafsToExclude)
 elif windType == "sites": windowGenerator = genomics.slidingSitesWindows(inFile, windSize, overlap,
-                                                                         maxDist, minSites, args.columns,
+                                                                         maxDist, minSites,
+                                                                         headerLine = args.header,
+                                                                         names = args.columns,
                                                                          include = scafsToInclude,
                                                                          exclude = scafsToExclude)
-else: windowGenerator = genomics.predefinedCoordWindows(inFile, windCoords, args.columns)
+else: windowGenerator = genomics.predefinedCoordWindows(inFile, windCoords,
+                                                        headerLine = args.header,
+                                                        names = args.columns)
 
 
 n=0
