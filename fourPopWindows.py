@@ -140,6 +140,7 @@ parser.add_argument("-o", "--outFile", help="Results file", required = False)
 parser.add_argument("--exclude", help="File of scaffolds to exclude", required = False)
 parser.add_argument("--include", help="File of scaffolds to analyse", required = False)
 parser.add_argument("-f", "--genoFormat", help="Format of genotypes in genotypes file", action='store', choices = ("phased","pairs","haplo","diplo"), required = True)
+parser.add_argument("--header", help="Header text if no header in input", action = "store")
 
 parser.add_argument("-T", "--Threads", help="Number of worker threads for parallel processing", type=int, default=1, required = False, metavar="threads")
 parser.add_argument("--verbose", help="Verbose output", action="store_true")
@@ -326,14 +327,19 @@ worker.start()
 
 #get windows and analyse
 if windType == "coordinate": windowGenerator = genomics.slidingCoordWindows(genoFile, windSize, stepSize,
-                                                                            sampleData.indNames,
+                                                                            headerLine = args.header,
+                                                                            names = sampleData.indNames,
                                                                             include = scafsToInclude,
                                                                             exclude = scafsToExclude)
 elif windType == "sites": windowGenerator = genomics.slidingSitesWindows(genoFile, windSize, overlap,
-                                                                         maxDist, minSites, sampleData.indNames,
+                                                                         maxDist, minSites,
+                                                                         headerLine = args.header,
+                                                                         names = sampleData.indNames,
                                                                          include = scafsToInclude,
                                                                          exclude = scafsToExclude)
-else: windowGenerator = genomics.predefinedCoordWindows(genoFile, windCoords, sampleData.indNames)
+else: windowGenerator = genomics.predefinedCoordWindows(genoFile, windCoords,
+                                                        headerLine = args.header
+                                                        names = sampleData.indNames)
 
 
 for window in windowGenerator:
