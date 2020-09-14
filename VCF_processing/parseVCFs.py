@@ -65,7 +65,7 @@ def parseAndMerge(fileNames, headData, scaffold, start, end, minQual, maxREFlen,
             present=False
             if currentSites[x] and currentSites[x].POS == pos:
                 present=True
-                if minQual and canFloat(currentSites[x].QUAL) and float(currentSites[x].QUAL) < minQual: present = False
+                if minQual and parseVCF.canFloat(currentSites[x].QUAL) and float(currentSites[x].QUAL) < minQual: present = False
                 if present and maxREFlen and len(vcfSite.REF) > maxREFlen: present = False
             if present:
                 if field: output = vcfSite.getGenoField(field,samples=samples[x], missing=missing)
