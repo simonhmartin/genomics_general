@@ -210,7 +210,7 @@ if args.samples:
 
 ploidyDict = defaultdict(lambda: args.ploidy)
 if args.ploidyFile:
-    with open(args.ploidyFile, "rt") as pf: ploidyDict.upldate(dict([[s[0],int(s[1])] for s in [l.split() for l in pf]]))
+    with open(args.ploidyFile, "rt") as pf: ploidyDict.update(dict([[s[0],int(s[1])] for s in [l.split() for l in pf]]))
 
 #make a list of missing genotypes for each file for fast insertion of missing lines when needed
 if args.field:
