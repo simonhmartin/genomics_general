@@ -192,7 +192,7 @@ def parseHeaderLines(fileObj):
     output["contigLengths"] = {}
     for line in fileObj:
         if line.startswith("##contig"):
-            contigDataDict = dict([x.split("=") for x in re.split('<|>', line)[1].split(",")])
+            contigDataDict = dict([x.split("=", maxsplit=1) for x in re.split('<|>', line)[1].split(",")])
             elements = re.split('=|,|>', line)
             output["contigs"].append(contigDataDict["ID"])
             try: output["contigLengths"][contigDataDict["ID"]] = int(contigDataDict["length"])
@@ -352,7 +352,7 @@ if __name__ == "__main__":
     
     ploidyDict = defaultdict(lambda: args.ploidy)
     if args.ploidyFile:
-        with open(args.ploidyFile, "rt") as pf: ploidyDict.upldate(dict([[s[0],int(s[1])] for s in [l.split() for l in pf]]))
+        with open(args.ploidyFile, "rt") as pf: ploidyDict.update(dict([[s[0],int(s[1])] for s in [l.split() for l in pf]]))
     
     ##########################################################################################################################
 
