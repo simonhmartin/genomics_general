@@ -117,7 +117,7 @@ for line in inFile:
         start = float(elements[startCol-1])
         end = float(elements[endCol-1])
         strand = elements[strandCol-1] if strandCol else "+"
-        assert strand is "+" or strand is "-"
+        assert strand == "+" or strand == "-"
         if scaf in transfers:
             startInterval = np.where(contains(transfers[scaf], start))[0]
             endInterval = np.where(contains(transfers[scaf], end))[0]
