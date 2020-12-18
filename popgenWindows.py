@@ -26,7 +26,7 @@ else:
 '''A function that reads from the window queue, calls some other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using. This is the function that will run on each of the N cores.'''
 def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, minSites,
-                  analysis, stats, addWindowID=False, roundTo=4):
+                  analysis, stats, minData, addWindowID=False, roundTo=4):
     while True:
         windowNumber,window = windowQueue.get() # retrieve window
         
@@ -49,7 +49,7 @@ def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, mi
                 statsDict.update(Aln.groupFreqStats())
             
             if "popDist" in analysis or "popPairDist" in analysis:
-                statsDict.update(Aln.groupDistStats(doPairs = "popPairDist" in analysis))
+                statsDict.update(Aln.groupDistStats(doPairs = "popPairDist" in analysis, minSites=minSites, minData=minData))
             
             if "indPairDist" in analysis:
                 pairDistDict = Aln.indPairDists()
@@ -171,6 +171,8 @@ parser.add_argument("-m", "--minSites", help="Minumum good sites per window", ty
 parser.add_argument("-O", "--overlap", help="Overlap for sites sliding window", type=int, action = "store", required = False, metavar="sites")
 parser.add_argument("-D", "--maxDist", help="Maximum span distance for sites window", type=int, action = "store", required = False)
 parser.add_argument("--windCoords", help="Window coordinates file (scaffold start end)", required = False)
+
+parser.add_argument("--minData", help="Minumum proportion of individuals (or pairs) with >=minSites data", type=float, action = "store", required = False, metavar="prop", default = 0.01)
 
 parser.add_argument("-p", "--population", help="Pop name and optionally sample names (separated by commas)",
                     required = False, action='append', nargs="+", metavar=("popName","[samples]"))
@@ -384,7 +386,7 @@ workerThreads = []
 sys.stderr.write("\nStarting {} worker threads\n".format(args.threads))
 for x in range(args.threads):
     workerThread = Process(target=stats_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, sampleData, minSites,
-                                                    args.analysis, stats, args.addWindowID,args.roundTo))
+                                                    args.analysis, stats, args.minData,  args.addWindowID,args.roundTo))
     workerThread.daemon = True
     workerThread.start()
     workerThreads.append(workerThread)
