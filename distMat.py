@@ -143,7 +143,7 @@ parser.add_argument("-f", "--genoFormat", action='store', choices = ("phased","p
                     help="Format of genotypes in genotypes file")
 parser.add_argument("--outFormat", action = "store", choices = ("raw","phylip","nexus"), default = "phylip",
                     help="Format for distance matrix output")
-parser.add_argument("--header", help="Header text if no header in input", action = "store")
+parser.add_argument("--headers", help="Headers text (separated by spaces) if no header in input", nargs="+", action = "store")
 
 parser.add_argument("--roundTo", help="Round to N decomal places", type=int, action = "store", default=4)
 
@@ -195,10 +195,13 @@ verbose = args.verbose
 
 
 ############## parse samples and populations
+
 if args.samples:
     samples = args.samples
+elif args.headers:
+    samples = args.headers[2:]
 else:
-    assert args.genoFile, "If piping from stdin, you need to provide the sample names using --samples."
+    assert args.genoFile, "If piping from stdin, you need to specify either --samples or --headers"
     with gzip.open(args.genoFile, "rt") if args.genoFile.endswith(".gz") else open(args.genoFile, "rt") as gf:
         samples = gf.readline().split()[2:]
 
@@ -308,26 +311,28 @@ worker.start()
 
 ##########################################################
 
+headerLine = "\t".join(args.headers) if args.headers else None
+
 if args.windType == "cat":
-    window = genomics.parseGenoFile(genoFile, headerLine = args.header, names=sampleData.indNames)
+    window = genomics.parseGenoFile(genoFile, headerLine = headerLine, names=sampleData.indNames)
     windowQueue.put((windowsQueued,window))
     windowsQueued += 1
     
 else:
     #get windows and analyse
     if args.windType == "coordinate": windowGenerator = genomics.slidingCoordWindows(genoFile, windSize, stepSize,
-                                                                                     headerLine = args.header,
+                                                                                     headerLine = headerLine,
                                                                                      names = sampleData.indNames,
                                                                                      include = scafsToInclude,
                                                                                      exclude = scafsToExclude)
     elif args.windType == "sites": windowGenerator = genomics.slidingSitesWindows(genoFile, windSize, overlap,
                                                                                   maxDist, minSites,
-                                                                                  headerLine = args.header,
+                                                                                  headerLine = headerLine,
                                                                                   names = sampleData.indNames,
                                                                                   include = scafsToInclude,
                                                                                   exclude = scafsToExclude)
     else: windowGenerator = genomics.predefinedCoordWindows(genoFile, windCoords,
-                                                            headerLine = args.header,
+                                                            headerLine = headerLine,
                                                             names = sampleData.indNames)
     
     for window in windowGenerator:
