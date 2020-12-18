@@ -85,6 +85,10 @@ def alleles(bases):
     s = set(bases)
     return [i for i in "ACGT" if i in s]
 
+def nanmean_min(a, min=0):
+    if 1 - (1.* np.isnan(a).sum()/a.size) < min: return np.NaN
+    return np.nanmean(a)
+
 ################################################################################
 
 #working with coding sequences
@@ -107,15 +111,18 @@ gencode = {
     'TAC':'Y', 'TAT':'Y', 'TAA':'_', 'TAG':'_',
     'TGC':'C', 'TGT':'C', 'TGA':'_', 'TGG':'W'}
 
-def translate(sequence):
+def translate(sequence, missing='X'):
     """Return the translated protein from 'sequence' assuming +1 reading frame"""
-    return ''.join([gencode.get(sequence[3*i:3*i+3],'X') for i in range(len(sequence)//3)])
+    return ''.join([gencode.get(sequence[3*i:3*i+3],missing) for i in range(len(sequence)//3)])
 
 def possibleCodons(pos1Alleles,pos2Alleles,pos3Alleles):
     return ["".join(x) for x in itertools.product(pos1Alleles,pos2Alleles,pos3Alleles)]
 
 def possibleAAs(pos1Alleles,pos2Alleles,pos3Alleles):
-    return sorted(set([translate(codon) for codon in possibleCodons(pos1Alleles,pos2Alleles,pos3Alleles)]))
+    AAs = set([translate(codon) for codon in possibleCodons(pos1Alleles,pos2Alleles,pos3Alleles)])
+    try: AAs.remove("X")
+    except: pass
+    return sorted(AAs)
 
 #function that takes three sets of allels, corresponding to the alleles at the three codon positions
 #and outputs whether each one is synonymous or nonsynonymous
@@ -128,13 +135,15 @@ def synNon(pos1Alleles,pos2Alleles,pos3Alleles):
         return output
     else:
         focal = nAlleles.index(2)
-        output[focal] = "syn" if len(possibleAAs(pos1Alleles,pos2Alleles,pos3Alleles)) == 1 else "non"
+        l = len(possibleAAs(pos1Alleles,pos2Alleles,pos3Alleles))
+        if l == 1: output[focal] = "syn"
+        elif l > 1: output[focal] = "non"
     return output
 
 
 #dictionary to tell you how degenerate a site is based on how many unique amino acids are formed when that site is mutated
 #eg if four distinct amino acids can be formed, the site is 0-fold degenerate
-degenDict = {4:0, 3:2, 2:2, 1:4}
+degenDict = {4:0, 3:2, 2:2, 1:4, 0:"NA"}
 
 def degeneracy(pos1Alleles,pos2Alleles,pos3Alleles):
     #if its invariant, then they all get a degeneracy
@@ -793,7 +802,7 @@ def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAllel
 class Alignment:
     __slots__ = ['sequences', 'names', 'groups', 'groupIndDict', 'indGroupDict',
                  'length', 'numArray', 'positions', 'sampleNames', 'nanMask', 'N', 'l',
-                 'array','numArray', '_distMat_']
+                 'array','numArray', '_distMat_', '_pairNonNan_']
     
     def __init__(self, sequences = None, names=None, groups = None, groupIndDict=None, length = None, numArray = None, positions=None, sampleNames=None):
         assert not sequences is numArray is length is None, "Specify sequences or length of empty sequence object."
@@ -851,6 +860,7 @@ class Alignment:
         
         #we make a None object for distance matrix, but if any dist matrix type function is run, this will be filled
         self._distMat_ = None
+        self._pairNonNan_ = None
     
     def subset(self, indices = None, names = None, groups = None):
         if indices is None: indices = []
@@ -879,12 +889,15 @@ class Alignment:
         nanMask = self.nanMask[i,:] & self.nanMask[j,:]
         return numHamming(self.numArray[i,:][nanMask], self.numArray[j,:][nanMask])
     
-    def distMatrix(self):
+    def distMatrix(self, minSites=None):
         distMat = np.zeros((self.N,self.N))
         for i in range(self.N - 1):
             for j in range(i + 1, self.N):
                 distMat[i,j] = distMat[j,i] = self.pairDist(i,j)
         self._distMat_ = distMat
+        if minSites:
+            pairNonNan = self._pairNonNan_ if self._pairNonNan_ is not None else self.pairNonNan()
+            distMat[pairNonNan < minSites] = np.NaN
         return distMat
     
     def sampleHet(self, sampleNames=None, asList = False):
@@ -920,9 +933,13 @@ class Alignment:
                     indDistMat[i,j] = indDistMat[j,i] = np.nanmean(distMat[np.ix_(sampleIndices[i],sampleIndices[j])])
             return indDistMat
     
-    def groupDistStats(self, doPairs = True):
+    def groupDistStats(self, doPairs = True, minSites=None, minData=0.01):
         #get distance matrix unless a precomputed one is available
         distMat = self._distMat_ if self._distMat_ is not None else self.distMatrix()
+        if minSites:
+            pairNonNan = self._pairNonNan_ if self._pairNonNan_ is not None else self.pairNonNan()
+            distMat[pairNonNan < minSites] = np.NaN
+        
         np.fill_diagonal(distMat, np.NaN) # set all same-with-same to Na
         
         pops,indices = np.unique(self.groups, return_inverse = True)
@@ -936,15 +953,15 @@ class Alignment:
         
         #pi for each pop
         for x in range(nPops):
-            output["pi_" + pops[x]] = np.nanmean(distMat[np.ix_(popIndices[x],popIndices[x])])
+            output["pi_" + pops[x]] = nanmean_min(distMat[np.ix_(popIndices[x],popIndices[x])], min=minData)
         
         if nPops == 1 or not doPairs: return output
-
+        
         #pairs
         for x in range(nPops-1):
             for y in range(x+1, nPops):
                 #dxy
-                output["dxy_" + pops[x] + "_" + pops[y]] = output["dxy_" + pops[y] + "_" + pops[x]] = np.nanmean(distMat[np.ix_(popIndices[x],popIndices[y])])
+                output["dxy_" + pops[x] + "_" + pops[y]] = output["dxy_" + pops[y] + "_" + pops[x]] = nanmean_min(distMat[np.ix_(popIndices[x],popIndices[y])], min=minData)
                 
                 #fst
                 #first get the weightings for each pop
@@ -952,7 +969,7 @@ class Alignment:
                 n_y = len(popIndices[y])
                 w = 1.* n_x/(n_x + n_y)
                 pi_s = w*(output["pi_" + pops[x]]) + (1-w)*(output["pi_" + pops[y]])
-                pi_t = np.nanmean(distMat[np.ix_(popIndices[x]+popIndices[y],popIndices[x]+popIndices[y])])
+                pi_t = nanmean_min(distMat[np.ix_(popIndices[x]+popIndices[y],popIndices[x]+popIndices[y])], min=minData)
                 output["Fst_" + pops[x] + "_" + pops[y]] = output["Fst_" + pops[y] + "_" + pops[x]] = 1 - pi_s/pi_t
         
         return output
