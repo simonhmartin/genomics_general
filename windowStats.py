@@ -38,7 +38,7 @@ parser.add_argument("--stats", help="Which statistics to compute", action = "sto
 parser.add_argument("-i", "--inFile", help="Input genotypes file", required = False)
 parser.add_argument("-o", "--outFile", help="Results file", required = False)
 
-parser.add_argument("--header", help="Header text if no header in input", action = "store")
+parser.add_argument("--headers", help="Headers text (separated by spaces) if no header in input", nargs="+", action = "store")
 
 parser.add_argument("--columns", help="Columns to analyse, separated by spaces", required = False, nargs="+")
 
@@ -84,6 +84,8 @@ if not minSites: minSites = windSize
 exclude = args.exclude
 include = args.include
 
+headerLine = " ".join(args.headers) if args.headers else None
+
 verbose = args.verbose
 
 
@@ -125,18 +127,18 @@ else:
 
 #get windows and analyse
 if windType == "coordinate": windowGenerator = genomics.slidingCoordWindows(inFile, windSize, stepSize,
-                                                                            headerLine = args.header,
+                                                                            headerLine = headerLine,
                                                                             names = args.columns,
                                                                             include = scafsToInclude,
                                                                             exclude = scafsToExclude)
 elif windType == "sites": windowGenerator = genomics.slidingSitesWindows(inFile, windSize, overlap,
                                                                          maxDist, minSites,
-                                                                         headerLine = args.header,
+                                                                         headerLine = headerLine,
                                                                          names = args.columns,
                                                                          include = scafsToInclude,
                                                                          exclude = scafsToExclude)
 else: windowGenerator = genomics.predefinedCoordWindows(inFile, windCoords,
-                                                        headerLine = args.header,
+                                                        headerLine = headerLine,
                                                         names = args.columns)
 
 
