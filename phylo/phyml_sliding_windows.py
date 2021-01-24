@@ -403,7 +403,7 @@ if windType == "coordinate":
 elif windType == "sites":
     windowGenerator = genomics.slidingSitesWindows(genoFile, windSize, overlap, maxDist, minSites, indNames, include = scafsToInclude, exclude = scafsToExclude)
 else:
-    windowGenerator = genomics.predefinedCoordWindows(genoFile, windCoords, indNames)
+    windowGenerator = genomics.predefinedCoordWindows(genoFile, windCoords, names=indNames)
 
 for window in windowGenerator:
     #simpleque has no max, so to make sure we haven't gotten ahead of ourselves, we compare windowsQueued to resultsReceived
