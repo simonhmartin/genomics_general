@@ -323,7 +323,7 @@ class Genotype:
             self.phase = geno[1] if len(geno) > 1 and len(geno)%2 == 1 else "/"
         elif genoFormat == "alleles" or genoFormat == "pairs" or genoFormat == "haplo":
             self.alleles = list(geno)
-            self.phase = ["/"]
+            self.phase = "/"
         elif genoFormat == "diplo":
             self.alleles = list(haplo(geno))
             self.phase = "/"
@@ -371,6 +371,9 @@ class Genotype:
     
     def asBaseCounts(self):
         return np.bincount(self.numAlleles[self.numAlleles >= 0], minlength = 4)
+
+    def asRandomAllele(self):
+        return self.alleles[0] if len(self.alleles)==1 else random.sample(self.alleles, 1)[0]
     
     def isMissing(self): return np.any(self.numAlleles==-999)
 
@@ -445,6 +448,7 @@ def haploToPhased(seqs, seqNames=None, ploidy=2, randomPhase=False):
 def makeHaploidNames(names,ploidy=2):
     ploidy=makeList(ploidy)
     if len(ploidy) == 1: ploidy = ploidy*len(names)
+    if np.all(np.array(ploidy) == 1) : return(names)
     ploidyDict = dict(zip(names, ploidy))
     return [n + "_" + letter for n in names for letter in string.ascii_uppercase[:ploidyDict[n]]]
 
@@ -522,6 +526,8 @@ class GenomeSite:
             return [self.genotypes[sample].asPhased() for sample in samples]
         elif mode == "diplo": #ACGT and KMRSYW for hets
             return [self.genotypes[sample].asDiplo() for sample in samples]
+        elif mode == "randomAllele": #ACGT and KMRSYW for hets
+            return [self.genotypes[sample].asRandomAllele() for sample in samples]
         elif mode == "coded": # vcf format '0/1' - optionally alleles can be provided (REF first)
             if alleles is None: alleles = self.alleles(byFreq = True)
             if codeDict is None: codeDict = dict(zip(alleles, [str(x) for x in range(len(alleles))]))
@@ -532,7 +538,7 @@ class GenomeSite:
                 countAllele = alleles[-1]
             return [self.genotypes[sample].asCount(countAllele,missing) for sample in samples]
         else:
-            raise ValueError("mode must be 'bases', 'alleles', 'numeric', 'numAlleles', 'phased', 'diplo', 'coded', or 'count'")
+            raise ValueError("mode must be 'bases', 'alleles', 'numeric', 'numAlleles', 'phased', 'diplo', 'randomAllele', 'coded', or 'count'")
     
     def baseFreqs(self, samples = None, pop=None, asCounts=False):
         if pop: samples = self.pops[pop]

@@ -131,7 +131,7 @@ parser.add_argument("-if", "--inputGenoFormat", help="Genotype format [otherwise
 
 #ouput
 parser.add_argument("-of", "--outputGenoFormat", action = "store", default = "phased",
-                    choices = ("phased","diplo","bases","alleles","coded","count"), help="Genotype format for output")
+                    choices = ("phased","diplo","bases","alleles","randomAllele","coded","count"), help="Genotype format for output")
 
 parser.add_argument("--alleleOrder", action = "store", default = None,
                     choices = ("freq",), help="Order sample alleles by frequency when outputting 'bases' or 'alleles'")
