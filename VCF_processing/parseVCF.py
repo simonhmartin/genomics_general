@@ -99,6 +99,10 @@ class VcfSite:
                     precompGenoData[(lineDict["FORMAT"], lineDict[sampleName],)] = self.genoData[sampleName]
                     precompGenoData["__counter__"] += 1
     
+    def getSiteType(self):
+        if len(self.ALT) == 0: return 'MONO'
+        if np.all(list(self.lenMatchDict.values())): return 'SNP'
+        return 'INDEL'
     
     def getGenotype(self, sample, gtFilters = [], withPhase=True, asNumbers = False, missing = None,
                     allowOnly=None, mustMatchREFlen=False, keepPartial=False, ploidy=None, ploidyMismatchToMissing=False, expandMulti=False):
@@ -113,7 +117,7 @@ class VcfSite:
         passed = True
         for gtFilter in gtFilters:
             #first check that it's applicable
-            if ("siteTypes" in gtFilter and self.getType() not in gtFilter["siteTypes"]): continue
+            if ("siteTypes" in gtFilter and self.getSiteType() not in gtFilter["siteTypes"]): continue
             if ("gtTypes" in gtFilter and GTtype(genoData["alleles"]) not in gtFilter["gtTypes"]): continue
             if ("samples" in gtFilter and sample not in gtFilter["samples"]): continue
             #now check that it passes
@@ -276,6 +280,7 @@ def addArgs(parser, requireInfile=False):
     parser.add_argument("--ploidyFile", help="File with samples names and ploidy as columns", action = "store")
     parser.add_argument("--ploidyMismatchToMissing", help="Set genotypes with mismatched ploidy to missing", action = "store_true")
     parser.add_argument("--keepPartial", help="Keep genotypes where some but not all alleles are missing", action = "store_true")
+    parser.add_argument("--addRefTrack", help="Add a third column with the header REF and the reference allele", action = "store_true")
     
     parser.add_argument("--field", help="Optional - format field to extract", action = "store")
     parser.add_argument("--missing", help="Value to use for missing data", action = "store")
@@ -355,8 +360,11 @@ if __name__ == "__main__":
         with open(args.ploidyFile, "rt") as pf: ploidyDict.update(dict([[s[0],int(s[1])] for s in [l.split() for l in pf]]))
     
     ##########################################################################################################################
-
-    outFile.write(args.outSep.join(["#CHROM", "POS"] + samples) + "\n")
+    
+    first_columns = ["#CHROM", "POS"]
+    if args.addRefTrack: first_columns.append("REF")
+    
+    outFile.write(args.outSep.join(first_columns + samples) + "\n")
     
     for vcfSite in parseVcfSites(inFile, headData["mainHeaders"], excludeDuplicates=args.excludeDuplicates, simplifyALT=simplifyALT):
         if (exclude and vcfSite.CHROM in exclude) or (include and vcfSite.CHROM not in include): continue
@@ -370,9 +378,13 @@ if __name__ == "__main__":
             #if we expanded multi-site genotypes, we need to write multiple lines
             if args.expandMulti:
                 for x in range(vcfSite.REFlen):
-                    outFile.write(args.outSep.join([vcfSite.CHROM, str(vcfSite.POS + x)] + [o[x] for o in output]) + "\n")
+                    first_columns = [vcfSite.CHROM, str(vcfSite.POS + x)]
+                    if args.addRefTrack: first_columns.append(vcfSite.REF[x])
+                    outFile.write(args.outSep.join(first_columns + [o[x] for o in output]) + "\n")
                 continue
         
-        outFile.write(args.outSep.join([vcfSite.CHROM, str(vcfSite.POS)] + output) + "\n")
+            first_columns = [vcfSite.CHROM, str(vcfSite.POS)]
+            if args.addRefTrack: first_columns.append(vcfSite.REF)
+            outFile.write(args.outSep.join(first_columns + output) + "\n")
     
     outFile.close()

@@ -190,6 +190,9 @@ args = parser.parse_args()
 if args.expandMulti:
     raise ValueError("Option --expandMulti is not currently suppoted by this multi-threaded script. Use parseVCF.py instead\n")
 
+if args.addRefTrack:
+    raise ValueError("Option --addRefTrack is not currently suppoted by this multi-threaded script. Use parseVCF.py instead\n")
+
 include,exclude = parseVCF.parseIncludeExcludeArgs(args)
 
 gtFilters = [parseVCF.parseGenotypeFilterArg(gtf) for gtf in args.gtf] if args.gtf else []
