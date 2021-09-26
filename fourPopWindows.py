@@ -338,7 +338,7 @@ elif windType == "sites": windowGenerator = genomics.slidingSitesWindows(genoFil
                                                                          include = scafsToInclude,
                                                                          exclude = scafsToExclude)
 else: windowGenerator = genomics.predefinedCoordWindows(genoFile, windCoords,
-                                                        headerLine = args.header
+                                                        headerLine = args.header,
                                                         names = sampleData.indNames)
 
 
