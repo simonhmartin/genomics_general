@@ -2308,6 +2308,12 @@ class Intervals():
     def containsPoint(self, pos, chrom=""):
         return (self.chroms == chrom) & (self.starts <= pos) & (pos <= self.ends)
     
+    def containsInterval(self, start, end, chrom=""):
+        return (self.chroms == chrom) & (self.starts <= start) & (end <= self.ends)
+    
+    def overlapsInterval(self, start, end, chrom=""):
+        return (self.chroms == chrom) & (self.starts <= end) & (start <= self.ends)
+    
     def asRegionText(self):
         return ["{}{}{}{}{}".format(self.chroms[i],
                                     ":" if self.chroms[i] != "" and self.starts[i] > 0 else "",
