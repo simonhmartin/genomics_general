@@ -23,24 +23,58 @@ def tabixStream(fileName, region = None, chrom = None, start=None, end=None, hea
 
 parser=argparse.ArgumentParser()
 
-parser.add_argument("--gff", help="Input gff file", action = "store", required = True)
+parser.add_argument("--annotation", help="Input gff3 or gtf file", action="store", required=True)
+parser.add_argument("--annotationFormat", help="Format ofnnotation file", choices=("gff3","gtf"), action = "store", default="gff3")
 parser.add_argument("-o", "--outFile", help="Output sequence file", action = "store")
 parser.add_argument("--outFormat", help="Output file format", action = "store", choices = ["fasta","phylip"], default="phylip")
+parser.add_argument('--includeCoordinates', help="Include chromosome and position info (only for fasta output)", action='store_true')
 parser.add_argument("-g", "--genoFile", help="Genotype file", action='store', required = True)
 parser.add_argument("-s", "--samples", help="Samples to include", nargs="+", action='store')
 parser.add_argument("-t", "--targets", help="Target mRNA names", nargs="+", action='store')
+parser.add_argument("-r", "--regions", help="Target regions (CHR or CHR:from-to)", nargs="+", action='store')
+parser.add_argument("--regionsFile", help="Target regions file (CHR or CHR from to)", nargs="+", action='store')
+parser.add_argument("--exclude", help="Chrom/scaffold/contig names to exclude (trumps specified regions)", nargs="+", action='store')
 parser.add_argument('--split', help="Split sequences into haplotypes", dest='split', action='store_true')
 parser.add_argument('--no-split', help="Do not split sequences", dest='split', action='store_false')
 #define ploidy if not 2
 parser.add_argument("--ploidy", help="Ploidy for splitting phased sequences", action = "store", type=int, nargs="+", default=2)
+
 parser.set_defaults(split=True)
 
 args = parser.parse_args()
 
-with gzip.open(args.gff,"rt") if args.gff.endswith(".gz") else open(args.gff,"rt") as gff: gffLines = gff.readlines()
+with gzip.open(args.annotation,"rt") if args.annotation.endswith(".gz") else open(args.annotation,"rt") as gff:
+    gffLines = gff.readlines()
 
-sys.stderr.write("Parsing gene data from gff\n")
-geneData = genomics.parseGenes(gffLines, targets=args.targets)
+sys.stderr.write("Parsing gene data\n")
+geneData = genomics.parseGenes(gffLines, fmt=args.annotationFormat, targets=args.targets)
+
+#remove regions are specified process and convert to non-overlapping intervals
+if args.regions or args.regionsFile:
+    regions=[]
+    if args.regions: regions = regions + [genomics.parseRegionText(regionText) for regionText in args.regions]
+    if args.regionsFile:
+        with open(args.regionsFile, "rt") as regionsFile:
+            for line in regionsFile:
+                regions.append(genomics.parseRegionsList(line.split))
+
+    regions = genomics.Intervals(tuples=regions)
+    
+    regions = regions.reduced()
+
+#if regions are specified or scaffolds to exclude are specified, remove genes outside of these
+if args.regions or args.regionsFile or args.exclude:
+    newGeneData = {}
+    for scaffold in geneData.keys():
+        if args.exclude and scaffold in args.exclude: continue
+        if scaffold in regions.chromSet:
+            newGeneData[scaffold] = {}
+            for mRNA in geneData[scaffold].keys():
+                if np.any(regions.containsInterval(geneData[scaffold][mRNA]["start"], geneData[scaffold][mRNA]["end"], scaffold)):
+                    newGeneData[scaffold][mRNA] = geneData[scaffold][mRNA]
+    
+    geneData = newGeneData
+
 
 if not args.outFile: outFile = sys.stdout
 else: outFile = gzip.open(args.outFile,"wt") if args.outFile.endswith(".gz") else open(args.outFile,"wt")
@@ -98,8 +132,8 @@ for scaffold in geneData.keys():
         
         cdsSeqs = [[siteGTdict[position][i] for position in cdsPositions] for i in range(nSeqs)]
         
-        if args.outFormat == "fasta":
-            outputNames = [name + "_" + mRNA + " " + scaffold + " " +
+        if args.includeCoordinates:
+            outputNames = [name + "_" + mRNA + " " + scaffold + ":" +
                            str(geneData[scaffold][mRNA]['start']) + "-" + str(geneData[scaffold][mRNA]['end']) for name in reader.names]
         else: outputNames = [name + "_" + mRNA for name in reader.names]
         
