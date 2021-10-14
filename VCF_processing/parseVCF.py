@@ -375,16 +375,16 @@ if __name__ == "__main__":
             output = vcfSite.getGenotypes(gtFilters,asList=True,withPhase=True,samples=samples,missing=args.missing,
                                           mustMatchREFlen=args.skipIndels,keepPartial=args.keepPartial,ploidyDict=ploidyDict,
                                           ploidyMismatchToMissing=args.ploidyMismatchToMissing,expandMulti=args.expandMulti)
-            #if we expanded multi-site genotypes, we need to write multiple lines
-            if args.expandMulti:
-                for x in range(vcfSite.REFlen):
-                    first_columns = [vcfSite.CHROM, str(vcfSite.POS + x)]
-                    if args.addRefTrack: first_columns.append(vcfSite.REF[x])
-                    outFile.write(args.outSep.join(first_columns + [o[x] for o in output]) + "\n")
-                continue
+        #if we expanded multi-site genotypes, we need to write multiple lines
+        if args.expandMulti:
+            for x in range(vcfSite.REFlen):
+                first_columns = [vcfSite.CHROM, str(vcfSite.POS + x)]
+                if args.addRefTrack: first_columns.append(vcfSite.REF[x])
+                outFile.write(args.outSep.join(first_columns + [o[x] for o in output]) + "\n")
+            continue
         
-            first_columns = [vcfSite.CHROM, str(vcfSite.POS)]
-            if args.addRefTrack: first_columns.append(vcfSite.REF)
-            outFile.write(args.outSep.join(first_columns + output) + "\n")
+        first_columns = [vcfSite.CHROM, str(vcfSite.POS)]
+        if args.addRefTrack: first_columns.append(vcfSite.REF)
+        outFile.write(args.outSep.join(first_columns + output) + "\n")
     
     outFile.close()
