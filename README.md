@@ -4,12 +4,23 @@
 
 ## Contents
 
+* [Installation and dependencies](#installation_and_dependencies)
 * [Processing VCF files](#processing-vcf-files)
-* [Filtering genotype files prior to further analysis](filtering_genotype_files_prior_to_further_analysis)
+* [Filtering genotype files prior to further analysis](#filtering_genotype_files_prior_to_further_analysis)
 * [Diversity and divergence analyses in sliding windows](#diversity-and-divergence-analyses-in-sliding-windows)
 * [Distance matrix](#distance-matrix)
 * [ABBA-BABA statistics in sliding windows](#abba-baba-statistics-in-sliding-windows)
 * [Trees for sliding windows](#trees-for-sliding-windows)
+
+---
+
+## Installation and dependencies
+
+There is no system installation required. Just download this entire repository using the green "Code" button at the top of this page, or with the bash command `git clone https://github.com/simonhmartin/genomics_general.git`. If you prefer to move scripts to the directory where you run them, bear in mind that many of these scripts require the script `genomics.py` to be present in the same directory (or on your PYTHONPATH). The easiest is just to leave them in the main directory and specify the full path to the script when running it from elsewhere.
+
+The only dependency is [numpy](https://numpy.org/).
+
+Most of the scripts now run in python 3. Some are still written for puthon 2, but those will be updated soon.
 
 ___
 
@@ -26,6 +37,14 @@ scaffold1   1        N/N       T/T       T|C
 Missing data is denoted as `N`, and phased and unphased genotypes are shown conventionally with `|` and `/`.
 
 The script `parseVCF.py` in the [`VCF_processing`](https://github.com/simonhmartin/genomics_general/tree/master/VCF_processing) directory, will convert vcf to this format. It has various options for filtering based on read depth, genotype quality or any other flag in the `FORMAT` column of the vcf.
+
+#### example command
+
+```bash
+python VCF_processing/parseVCF.py -i input.vcf.gz --skipIndels --minQual 30 --gtf flag=DP min=5 max 50 -o > output.geno.gz
+```
+
+You can read more about this script in the [`VCF_processing`](https://github.com/simonhmartin/genomics_general/tree/master/VCF_processing) directory.
 
 ---
 
