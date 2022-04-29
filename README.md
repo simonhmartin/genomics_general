@@ -58,13 +58,13 @@ You can also specify various putput formats using `-of`.
 
 | Output format | Description | example |
 | :-----------: | ----------- | -------- |
-| `phased` (default) | Alleles separates by a phase operator. This doesn't mean the phase is known, just that it is indicated | `A/A    G/G    G|A` |
+| `phased` (default) | Alleles separates by a phase operator. This doesn't mean the phase is known, just that it is indicated | `A/A    G/G    G\|A` |
 | `diplo`     | For diploids only. Genotypes are single bases denoting the diploid genotype, using ambiguity codes for heterozygotes | `A       G       R` |
 | `alleles`  | as above but without the phase operator | `AA    GG    GA` |
-| `randomAllele` | Randomly pick one allele per individual | `A`    `G`    `A` |
-| `coded` | Coded numerically as in the VCF | `0/0`    `1/1`    `1|0` |
-| `bases` | Separate the alleles for each individual into different columns and also give different headers for each | `A`    `A`    `G`    `G`    `G`    `A` |
-| `counts` | Count of the minor allele in each individual | `0`    `2`    `1` |
+| `randomAllele` | Randomly pick one allele per individual | `A    G    A` |
+| `coded` | Coded numerically as in the VCF | `0/0    1/1    1\|0` |
+| `bases` | Separate the alleles for each individual into different columns and also give different headers for each | `A    A    G    G    G    A` |
+| `counts` | Count of the minor allele in each individual | `0    2    1` |
 
 ___
 
