@@ -38,10 +38,10 @@ Missing data is denoted as `N`, and phased and unphased genotypes are shown conv
 
 The script `parseVCF.py` in the [`VCF_processing`](https://github.com/simonhmartin/genomics_general/tree/master/VCF_processing) directory, will convert vcf to this format. It has various options for filtering based on read depth, genotype quality or any other flag in the `FORMAT` column of the vcf.
 
-#### example command
+#### Example command
 
 ```bash
-python VCF_processing/parseVCF.py -i input.vcf.gz --skipIndels --minQual 30 --gtf flag=DP min=5 max 50 -o > output.geno.gz
+python VCF_processing/parseVCF.py -i input.vcf.gz --skipIndels --minQual 30 --gtf flag=DP min=5 max=50 -o output.geno.gz
 ```
 
 You can read more about this script in the [`VCF_processing`](https://github.com/simonhmartin/genomics_general/tree/master/VCF_processing) directory.
@@ -75,7 +75,7 @@ You can specify a different input formats using the `-if`, but this is not recom
 
 You can also specify various putput formats using `-of`.
 
-| Output format | Description | example |
+| Output format | Description | Example |
 | :-----------: | ----------- | -------- |
 | `phased` (default) | Alleles separates by a phase operator. This doesn't mean the phase is known, just that it is indicated | `A/A    G/G    G\|A` |
 | `diplo`     | For diploids only. Genotypes are single bases denoting the diploid genotype, using ambiguity codes for heterozygotes | `A       G       R` |
