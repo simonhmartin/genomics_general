@@ -104,240 +104,239 @@ def checkStats():
 
 ####################################################################################################################
 
-parser = argparse.ArgumentParser()
+if __name__ == '__main__':
+    
+    parser = argparse.ArgumentParser()
 
-parser.add_argument("--windType", help="Type of windows to make", action = "store", choices = ("sites","coordinate","predefined"), default = "coordinate")
-parser.add_argument("-w", "--windSize", help="Window size in bases", type=int, action = "store", required = False, metavar="sites")
-parser.add_argument("-s", "--stepSize", help="Step size for sliding window", type=int, action = "store", required = False, metavar="sites")
-parser.add_argument("-m", "--minSites", help="Minumum good sites per window", type=int, action = "store", required = False, metavar="sites", default = 1)
-parser.add_argument("--overlap", help="Overlap for sites sliding window", type=int, action = "store", required = False, metavar="sites")
-parser.add_argument("-D", "--maxDist", help="Maximum span distance for sites window", type=int, action = "store", required = False)
-parser.add_argument("--windCoords", help="Window coordinates file (scaffold start end)", required = False)
-parser.add_argument("--minData", help="Min proportion of samples genotped per site", type=float, action="store", required = False, default = 0.01, metavar = "proportion")
+    parser.add_argument("--windType", help="Type of windows to make", action = "store", choices = ("sites","coordinate","predefined"), default = "coordinate")
+    parser.add_argument("-w", "--windSize", help="Window size in bases", type=int, action = "store", required = False, metavar="sites")
+    parser.add_argument("-s", "--stepSize", help="Step size for sliding window", type=int, action = "store", required = False, metavar="sites")
+    parser.add_argument("-m", "--minSites", help="Minumum good sites per window", type=int, action = "store", required = False, metavar="sites", default = 1)
+    parser.add_argument("--overlap", help="Overlap for sites sliding window", type=int, action = "store", required = False, metavar="sites")
+    parser.add_argument("-D", "--maxDist", help="Maximum span distance for sites window", type=int, action = "store", required = False)
+    parser.add_argument("--windCoords", help="Window coordinates file (scaffold start end)", required = False)
+    parser.add_argument("--minData", help="Min proportion of samples genotped per site", type=float, action="store", required = False, default = 0.01, metavar = "proportion")
 
-parser.add_argument("-P1", "--pop1", help="Pop name and optionally sample names (separated by commas)",
-                    required = True, action='store', nargs="+", metavar=("popName","[samples]"))
-parser.add_argument("-P2", "--pop2", help="Pop name and optionally sample names (separated by commas)",
-                    required = True, action='store', nargs="+", metavar=("popName","[samples]"))
-parser.add_argument("-P3", "--pop3", help="Pop name and optionally sample names (separated by commas)",
-                    required = True, action='store', nargs="+", metavar=("popName","[samples]"))
-parser.add_argument("-O", "--outgroup", help="Pop name and optionally sample names (separated by commas)",
-                    required = True, action='store', nargs="+", metavar=("popName","[samples]"))
-parser.add_argument("--popsFile", help="Optional file of sample names and populations", action = "store", required = False)
-parser.add_argument("--haploid", help="Samples that are haploid (comma separated)", action = "store", metavar = "sample names")
+    parser.add_argument("-P1", "--pop1", help="Pop name and optionally sample names (separated by commas)",
+                        required = True, action='store', nargs="+", metavar=("popName","[samples]"))
+    parser.add_argument("-P2", "--pop2", help="Pop name and optionally sample names (separated by commas)",
+                        required = True, action='store', nargs="+", metavar=("popName","[samples]"))
+    parser.add_argument("-P3", "--pop3", help="Pop name and optionally sample names (separated by commas)",
+                        required = True, action='store', nargs="+", metavar=("popName","[samples]"))
+    parser.add_argument("-O", "--outgroup", help="Pop name and optionally sample names (separated by commas)",
+                        required = True, action='store', nargs="+", metavar=("popName","[samples]"))
+    parser.add_argument("--popsFile", help="Optional file of sample names and populations", action = "store", required = False)
+    parser.add_argument("--haploid", help="Samples that are haploid (comma separated)", action = "store", metavar = "sample names")
 
-parser.add_argument("-g", "--genoFile", help="Input genotypes file", required = False)
-parser.add_argument("-o", "--outFile", help="Results file", required = False)
-parser.add_argument("--exclude", help="File of scaffolds to exclude", required = False)
-parser.add_argument("--include", help="File of scaffolds to analyse", required = False)
-parser.add_argument("-f", "--genoFormat", help="Format of genotypes in genotypes file", action='store', choices = ("phased","pairs","haplo","diplo"), required = True)
-parser.add_argument("--header", help="Header text if no header in input", action = "store")
+    parser.add_argument("-g", "--genoFile", help="Input genotypes file", required = False)
+    parser.add_argument("-o", "--outFile", help="Results file", required = False)
+    parser.add_argument("--exclude", help="File of scaffolds to exclude", required = False)
+    parser.add_argument("--include", help="File of scaffolds to analyse", required = False)
+    parser.add_argument("-f", "--genoFormat", help="Format of genotypes in genotypes file", action='store', choices = ("phased","pairs","haplo","diplo"), required = True)
+    parser.add_argument("--header", help="Header text if no header in input", action = "store")
 
-parser.add_argument("-T", "--Threads", help="Number of worker threads for parallel processing", type=int, default=1, required = False, metavar="threads")
-parser.add_argument("--verbose", help="Verbose output", action="store_true")
-parser.add_argument("--addWindowID", help="Add window name or number as first column", action="store_true")
-parser.add_argument("--writeFailedWindows", help="Write output even for windows with too few sites.", action="store_true")
-
-
-args = parser.parse_args()
-
-#window parameters
-windType = args.windType
-
-if args.windType == "coordinate":
-    assert args.windSize, "Window size must be provided."
-    windSize = args.windSize
-    stepSize = args.stepSize
-    if not stepSize: stepSize = windSize
-    assert not args.overlap, "Overlap does not apply to coordinate windows. Use --stepSize instead."
-    assert not args.maxDist, "Maximum distance only applies to sites windows."
-
-elif args.windType == "sites":
-    assert args.windSize, "Window size (number of sites) must be provided."
-    windSize = args.windSize
-    overlap = args.overlap
-    if not overlap: overlap = 0
-    maxDist = args.maxDist
-    if not maxDist: maxDist = np.inf
-    assert not args.stepSize, "Step size only applies to coordinate windows. Use --overlap instead."
-else:
-    assert args.windCoords, "Please provide a file of window coordinates."
-    assert not args.overlap, "Overlap does not apply for predefined windows."
-    assert not args.maxDist, "Maximum does not apply for predefined windows."
-    assert not args.stepSize,"Step size does not apply for predefined windows."
-    assert not args.include,"You cannot only include specific scaffolds if using predefined windows."
-    assert not args.exclude,"You cannot exclude specific scaffolds if using predefined windows."
-    with open(args.windCoords,"r") as wc: windCoords = [line.split()[:4] for line in wc]
-    for w in windCoords:
-        w[1] = int(w[1])
-        w[2] = int(w[2])
-
-minSites = args.minSites
-if not minSites: minSites = windSize
+    parser.add_argument("-T", "--Threads", help="Number of worker threads for parallel processing", type=int, default=1, required = False, metavar="threads")
+    parser.add_argument("--verbose", help="Verbose output", action="store_true")
+    parser.add_argument("--addWindowID", help="Add window name or number as first column", action="store_true")
+    parser.add_argument("--writeFailedWindows", help="Write output even for windows with too few sites.", action="store_true")
 
 
-minData = args.minData
-assert 0 <= minData <= 1, "minimum data per site must be between 0 and 1."
+    args = parser.parse_args()
 
-#file info
-genoFormat = args.genoFormat
+    #window parameters
+    windType = args.windType
 
-outFileName = args.outFile
+    if args.windType == "coordinate":
+        assert args.windSize, "Window size must be provided."
+        windSize = args.windSize
+        stepSize = args.stepSize
+        if not stepSize: stepSize = windSize
+        assert not args.overlap, "Overlap does not apply to coordinate windows. Use --stepSize instead."
+        assert not args.maxDist, "Maximum distance only applies to sites windows."
 
-exclude = args.exclude
-include = args.include
+    elif args.windType == "sites":
+        assert args.windSize, "Window size (number of sites) must be provided."
+        windSize = args.windSize
+        overlap = args.overlap
+        if not overlap: overlap = 0
+        maxDist = args.maxDist
+        if not maxDist: maxDist = np.inf
+        assert not args.stepSize, "Step size only applies to coordinate windows. Use --overlap instead."
+    else:
+        assert args.windCoords, "Please provide a file of window coordinates."
+        assert not args.overlap, "Overlap does not apply for predefined windows."
+        assert not args.maxDist, "Maximum does not apply for predefined windows."
+        assert not args.stepSize,"Step size does not apply for predefined windows."
+        assert not args.include,"You cannot only include specific scaffolds if using predefined windows."
+        assert not args.exclude,"You cannot exclude specific scaffolds if using predefined windows."
+        with open(args.windCoords,"r") as wc: windCoords = [line.split()[:4] for line in wc]
+        for w in windCoords:
+            w[1] = int(w[1])
+            w[2] = int(w[2])
 
-#other
-threads = args.Threads
-verbose = args.verbose
-
-
-############## parse populations
-
-popNames = []
-popInds = []
-for p in [args.pop1, args.pop2, args.pop3, args.outgroup]:
-    popNames.append(p[0])
-    if len(p) > 1: popInds.append(p[1].split(","))
-    else: popInds.append([])
-
-if args.popsFile:
-    with open(args.popsFile, "rt") as pf: popDict = dict([ln.split() for ln in pf])
-    for ind in popDict.keys():
-        try: popInds[popNames.index(popDict[ind])].append(ind)
-        except: pass
-
-for p in popInds: assert len(p) >= 1, "All populations must be represented by at least one sample."
-
-allInds = list(set([i for p in popInds for i in p]))
-
-ploidyDict = dict(zip(allInds,[2]*len(allInds)))
-if args.haploid:
-    for sample in args.haploid.split(","):
-        ploidyDict[sample] = 1
-
-sampleData = genomics.SampleData(popNames = popNames, popInds = popInds, ploidyDict = ploidyDict)
-
-############################################################################################################################################
-
-#open files
-
-if args.genoFile: genoFile = gzip.open(args.genoFile, "rt") if args.genoFile.endswith(".gz") else open(args.genoFile, "rt")
-else: genoFile = sys.stdin
-
-if args.outFile: outFile = gzip.open(args.outFile, "wt") if args.outFile.endswith(".gz") else open(args.outFile, "wt")
-else: outFile = sys.stdout
-
-if not args.addWindowID: outFile.write("scaffold,start,end,mid,sites,sitesUsed,ABBA,BABA,D,fd,fdM\n")
-else: outFile.write("windowID,scaffold,start,end,mid,sites,sitesUsed,ABBA,BABA,D,fd,fdM\n")
-
-##############################################################
-
-#scafs to exclude
-
-if exclude:
-    scafsFile = open(exclude, "rt")
-    scafsToExclude = [line.rstrip() for line in scafsFile.readlines()]
-    print(len(scafsToExclude), "scaffolds will be excluded.", file=sys.stderr)
-    scafsFile.close()
-else:
-    scafsToExclude = None
-
-if include:
-    scafsFile = open(include, "rt")
-    scafsToInclude = [line.rstrip() for line in scafsFile.readlines()]
-    print(len(scafsToInclude), "scaffolds will be analysed.", file=sys.stderr)
-    scafsFile.close()
-else:
-    scafsToInclude = None
+    minSites = args.minSites
+    if not minSites: minSites = windSize
 
 
-##########################################################################################################
+    minData = args.minData
+    assert 0 <= minData <= 1, "minimum data per site must be between 0 and 1."
 
-#counting stat that will let keep track of how far we are
-windowsQueued = 0
-resultsReceived = 0
-resultsWritten = 0
-resultsHandled = 0
+    #file info
+    genoFormat = args.genoFormat
 
-'''Create queues to hold the data one will hold the line info to be passed to the analysis'''
-windowQueue = SimpleQueue()
-#one will hold the results (in the order they come)
-resultQueue = SimpleQueue()
-#one will hold the sorted results to be written
-writeQueue = SimpleQueue()
+    outFileName = args.outFile
 
+    exclude = args.exclude
+    include = args.include
 
-'''start worker Processes for analysis. The comand should be tailored for the analysis wrapper function
-of course these will only start doing anything after we put data into the line queue
-the function we call is actually a wrapper for another function.(s) This one reads from the line queue, passes to some analysis function(s), gets the results and sends to the result queue'''
-for x in range(threads):
-  worker = Process(target=ABBABABA_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, sampleData,
-                                                    popNames[0], popNames[1], popNames[2], popNames[3], minData, minSites, args.addWindowID))
-  worker.daemon = True
-  worker.start()
+    #other
+    threads = args.Threads
+    verbose = args.verbose
 
 
-'''thread for sorting results'''
-worker = Thread(target=sorter, args=(resultQueue,writeQueue,verbose,))
-worker.daemon = True
-worker.start()
+    ############## parse populations
 
-'''start thread for writing the results'''
-worker = Thread(target=writer, args=(writeQueue, outFile, args.writeFailedWindows,))
-worker.daemon = True
-worker.start()
+    popNames = []
+    popInds = []
+    for p in [args.pop1, args.pop2, args.pop3, args.outgroup]:
+        popNames.append(p[0])
+        if len(p) > 1: popInds.append(p[1].split(","))
+        else: popInds.append([])
+
+    if args.popsFile:
+        with open(args.popsFile, "rt") as pf: popDict = dict([ln.split() for ln in pf])
+        for ind in popDict.keys():
+            try: popInds[popNames.index(popDict[ind])].append(ind)
+            except: pass
+
+    for p in popInds: assert len(p) >= 1, "All populations must be represented by at least one sample."
+
+    allInds = list(set([i for p in popInds for i in p]))
+
+    ploidyDict = dict(zip(allInds,[2]*len(allInds)))
+    if args.haploid:
+        for sample in args.haploid.split(","):
+            ploidyDict[sample] = 1
+
+    sampleData = genomics.SampleData(popNames = popNames, popInds = popInds, ploidyDict = ploidyDict)
+
+    ############################################################################################################################################
+
+    #open files
+
+    if args.genoFile: genoFile = gzip.open(args.genoFile, "rt") if args.genoFile.endswith(".gz") else open(args.genoFile, "rt")
+    else: genoFile = sys.stdin
+
+    if args.outFile: outFile = gzip.open(args.outFile, "wt") if args.outFile.endswith(".gz") else open(args.outFile, "wt")
+    else: outFile = sys.stdout
+
+    if not args.addWindowID: outFile.write("scaffold,start,end,mid,sites,sitesUsed,ABBA,BABA,D,fd,fdM\n")
+    else: outFile.write("windowID,scaffold,start,end,mid,sites,sitesUsed,ABBA,BABA,D,fd,fdM\n")
+
+    ##############################################################
+
+    #scafs to exclude
+
+    if exclude:
+        scafsFile = open(exclude, "rt")
+        scafsToExclude = [line.rstrip() for line in scafsFile.readlines()]
+        print(len(scafsToExclude), "scaffolds will be excluded.", file=sys.stderr)
+        scafsFile.close()
+    else:
+        scafsToExclude = None
+
+    if include:
+        scafsFile = open(include, "rt")
+        scafsToInclude = [line.rstrip() for line in scafsFile.readlines()]
+        print(len(scafsToInclude), "scaffolds will be analysed.", file=sys.stderr)
+        scafsFile.close()
+    else:
+        scafsToInclude = None
 
 
-'''start background Thread that will run a loop to check run statistics and print
-We use thread, because I think this is necessary for a process that watches global variables like linesTested'''
-worker = Thread(target=checkStats)
-worker.daemon = True
-worker.start()
+    ##########################################################################################################
+
+    #counting stat that will let keep track of how far we are
+    windowsQueued = 0
+    resultsReceived = 0
+    resultsWritten = 0
+    resultsHandled = 0
+
+    '''Create queues to hold the data one will hold the line info to be passed to the analysis'''
+    windowQueue = SimpleQueue()
+    #one will hold the results (in the order they come)
+    resultQueue = SimpleQueue()
+    #one will hold the sorted results to be written
+    writeQueue = SimpleQueue()
+
+
+    '''start worker Processes for analysis. The comand should be tailored for the analysis wrapper function
+    of course these will only start doing anything after we put data into the line queue
+    the function we call is actually a wrapper for another function.(s) This one reads from the line queue, passes to some analysis function(s), gets the results and sends to the result queue'''
+    for x in range(threads):
+    worker = Process(target=ABBABABA_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, sampleData,
+                                                        popNames[0], popNames[1], popNames[2], popNames[3], minData, minSites, args.addWindowID))
+    worker.daemon = True
+    worker.start()
+
+
+    '''thread for sorting results'''
+    worker = Thread(target=sorter, args=(resultQueue,writeQueue,verbose,))
+    worker.daemon = True
+    worker.start()
+
+    '''start thread for writing the results'''
+    worker = Thread(target=writer, args=(writeQueue, outFile, args.writeFailedWindows,))
+    worker.daemon = True
+    worker.start()
+
+
+    '''start background Thread that will run a loop to check run statistics and print
+    We use thread, because I think this is necessary for a process that watches global variables like linesTested'''
+    worker = Thread(target=checkStats)
+    worker.daemon = True
+    worker.start()
 
 
 
 
-##########################################################
+    ##########################################################
 
-#get windows and analyse
-if windType == "coordinate": windowGenerator = genomics.slidingCoordWindows(genoFile, windSize, stepSize,
+    #get windows and analyse
+    if windType == "coordinate": windowGenerator = genomics.slidingCoordWindows(genoFile, windSize, stepSize,
+                                                                                headerLine = args.header,
+                                                                                names = sampleData.indNames,
+                                                                                include = scafsToInclude,
+                                                                                exclude = scafsToExclude)
+    elif windType == "sites": windowGenerator = genomics.slidingSitesWindows(genoFile, windSize, overlap,
+                                                                            maxDist, minSites,
                                                                             headerLine = args.header,
                                                                             names = sampleData.indNames,
                                                                             include = scafsToInclude,
                                                                             exclude = scafsToExclude)
-elif windType == "sites": windowGenerator = genomics.slidingSitesWindows(genoFile, windSize, overlap,
-                                                                         maxDist, minSites,
-                                                                         headerLine = args.header,
-                                                                         names = sampleData.indNames,
-                                                                         include = scafsToInclude,
-                                                                         exclude = scafsToExclude)
-else: windowGenerator = genomics.predefinedCoordWindows(genoFile, windCoords,
-                                                        headerLine = args.header,
-                                                        names = sampleData.indNames)
+    else: windowGenerator = genomics.predefinedCoordWindows(genoFile, windCoords,
+                                                            headerLine = args.header,
+                                                            names = sampleData.indNames)
 
 
-for window in windowGenerator:
-    windowQueue.put((windowsQueued,window))
-    windowsQueued += 1
+    for window in windowGenerator:
+        windowQueue.put((windowsQueued,window))
+        windowsQueued += 1
 
-############################################################################################################################################
+    ############################################################################################################################################
 
-print("\nWriting final results...\n", file=sys.stderr)
-while resultsHandled < windowsQueued:
-  sleep(1)
+    print("\nWriting final results...\n", file=sys.stderr)
+    while resultsHandled < windowsQueued:
+    sleep(1)
 
-sleep(5)
+    sleep(5)
 
-genoFile.close()
-outFile.close()
+    genoFile.close()
+    outFile.close()
 
-print(windowsQueued, "windows were tested", file=sys.stderr)
-print(resultsWritten, "results were written", file=sys.stderr)
+    print(windowsQueued, "windows were tested", file=sys.stderr)
+    print(resultsWritten, "results were written", file=sys.stderr)
 
-print("\nDone.", file=sys.stderr)
+    print("\nDone.", file=sys.stderr)
 
-sys.exit()
-
-
-
+    sys.exit()
