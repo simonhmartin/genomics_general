@@ -410,10 +410,10 @@ if __name__ == '__main__':
     #run remaining lines in pod
 
     if len(pod) > 0:
-    inQueue.put((podNumber,pod))
-    podsQueued += 1
-    if verbose:
-            sys.stderr.write("Pod {} sent for analysis...\n".format(podNumber))
+        inQueue.put((podNumber,pod))
+        podsQueued += 1
+        if verbose:
+                sys.stderr.write("Pod {} sent for analysis...\n".format(podNumber))
 
 
     #Wait for analysis to finish
