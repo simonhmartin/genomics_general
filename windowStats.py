@@ -170,7 +170,7 @@ for window in windowGenerator:
                 elif stat == "median": output.append(str(np.median(numbers[i,:][nanMask[i,:]])))
                 elif stat == "min": output.append(str(np.min(numbers[i,:][nanMask[i,:]])))
                 elif stat == "max": output.append(str(np.max(numbers[i,:][nanMask[i,:]])))
-                elif stat == "sd": output.append(str(np.std(numbers[i,:][nanMask[i,:]])))
+                elif stat == "sd": output.append(str(round(np.std(numbers[i,:][nanMask[i,:]]),6)))
                 elif stat == "sum": output.append(str(np.sum(numbers[i,:][nanMask[i,:]])))
                 elif stat == "q5": output.append(str(quantile(numbers[i,:][nanMask[i,:]], 0.05)))
                 elif stat == "q10": output.append(str(quantile(numbers[i,:][nanMask[i,:]], 0.1)))
