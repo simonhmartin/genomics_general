@@ -351,7 +351,7 @@ if __name__ == '__main__':
 
     print("Writing final results...", file=sys.stderr) 
     while resultsHandled < windowsQueued:
-    sleep(1)
+        sleep(1)
 
     sleep(5)
 
@@ -364,3 +364,6 @@ if __name__ == '__main__':
     print("\nDone.", file=sys.stderr)
 
     sys.exit()
+
+
+

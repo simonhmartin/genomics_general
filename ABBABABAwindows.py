@@ -274,10 +274,10 @@ if __name__ == '__main__':
     of course these will only start doing anything after we put data into the line queue
     the function we call is actually a wrapper for another function.(s) This one reads from the line queue, passes to some analysis function(s), gets the results and sends to the result queue'''
     for x in range(threads):
-    worker = Process(target=ABBABABA_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, sampleData,
-                                                        popNames[0], popNames[1], popNames[2], popNames[3], minData, minSites, args.addWindowID))
-    worker.daemon = True
-    worker.start()
+        worker = Process(target=ABBABABA_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, sampleData,
+                                                            popNames[0], popNames[1], popNames[2], popNames[3], minData, minSites, args.addWindowID))
+        worker.daemon = True
+        worker.start()
 
 
     '''thread for sorting results'''
@@ -300,7 +300,7 @@ if __name__ == '__main__':
 
 
 
-    ##########################################################
+##########################################################
 
     #get windows and analyse
     if windType == "coordinate": windowGenerator = genomics.slidingCoordWindows(genoFile, windSize, stepSize,
@@ -327,7 +327,7 @@ if __name__ == '__main__':
 
     print("\nWriting final results...\n", file=sys.stderr)
     while resultsHandled < windowsQueued:
-    sleep(1)
+        sleep(1)
 
     sleep(5)
 
@@ -340,3 +340,6 @@ if __name__ == '__main__':
     print("\nDone.", file=sys.stderr)
 
     sys.exit()
+
+
+

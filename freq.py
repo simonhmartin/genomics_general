@@ -302,11 +302,11 @@ if __name__ == '__main__':
     workerThreads = []
     sys.stderr.write("\nStarting {} worker threads\n".format(args.threads))
     for x in range(args.threads):
-    workerThread = Process(target=freqs_wrapper, args = (inQueue, resultQueue, headerLine, args.genoFormat, sampleData,
-                                                    args.target, minData, asCounts, args.threshold, keepNanLines,))
-    workerThread.daemon = True
-    workerThread.start()
-    workerThreads.append(workerThread)
+        workerThread = Process(target=freqs_wrapper, args = (inQueue, resultQueue, headerLine, args.genoFormat, sampleData,
+                                                        args.target, minData, asCounts, args.threshold, keepNanLines,))
+        workerThread.daemon = True
+        workerThread.start()
+        workerThreads.append(workerThread)
 
 
     '''thread for sorting results'''
