@@ -21,7 +21,7 @@ from time import sleep
 '''main worker function. This will watch the inQueue for pods, and pass lines from these pods to be parsed and filtered, before packaging back into a pod and sending on to the resultQueue'''
 def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,alleleOrder,headers,include,exclude,samples,
                     minCalls,minPopCalls,minAlleles,maxAlleles,minPopAlleles,maxPopAlleles,minVarCount,maxHet,minFreq,maxFreq,
-                    HWE_P,HWE_side,popDict,ploidyDict,fixed,nearlyFixedDiff,forcePloidy,partialToMissing,thinDist,noTest):
+                    HWE_P,HWE_side,popDict,ploidyDict,fixed,nearlyFixedDiff,forcePloidy,partialToMissing,thinDist,precomp,noTest):
     sampleIndices = [headers.index(s) for s in samples]
     #dict of precomputed genotypes
     precompGTs = dict([(s, dict(),) for s in samples]) if precomp else None
@@ -363,7 +363,7 @@ if __name__ == '__main__':
                                                     headers,include,exclude,samples,minCalls,minPopCallsDict,minAlleles,maxAlleles,
                                                     minPopAllelesDict,maxPopAllelesDict,minVarCount,maxHet,minFreq,maxFreq,
                                                     HWE_P,HWE_side,popDict,ploidyDict,fixed,args.nearlyFixedDiff,args.forcePloidy,
-                                                    args.partialToMissing,args.thinDist,args.noTest,))
+                                                    args.partialToMissing,args.thinDist,precomp,args.noTest,))
         worker.daemon = True
         worker.start()
 
