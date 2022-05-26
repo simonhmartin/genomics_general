@@ -21,7 +21,7 @@ from time import sleep
 '''main worker function. This will watch the inQueue for pods, and pass lines from these pods to be parsed and filtered, before packaging back into a pod and sending on to the resultQueue'''
 def analysisWrapper(inQueue,outQueue,inputGenoFormat,outputGenoFormat,alleleOrder,headers,include,exclude,samples,
                     minCalls,minPopCalls,minAlleles,maxAlleles,minPopAlleles,maxPopAlleles,minVarCount,maxHet,minFreq,maxFreq,
-                    HWE_P,HWE_side,popDict,ploidyDict,fixed,nearlyFixedDiff,forcePloidy,partialToMissing,thinDist,precomp,noTest):
+                    HWE_P,HWE_side,popDict,ploidyDict,fixed,nearlyFixedDiff,forcePloidy,partialToMissing,thinDist,precomp,verbose,noTest):
     sampleIndices = [headers.index(s) for s in samples]
     #dict of precomputed genotypes
     precompGTs = dict([(s, dict(),) for s in samples]) if precomp else None
@@ -261,10 +261,7 @@ if __name__ == '__main__':
             assert len(maxPopAlleles) == len(popNames)
             maxPopAllelesDict = dict(zip(popNames,maxPopAlleles))
             if args.minPopAlleles == None: minPopAllelesDict = dict(zip(popNames,[0]*len(popNames)))
-        
-    nProcs = args.threads
-    verbose = args.verbose
-
+    
     precomp = not args.noPrecomp
 
     ##########################################################################################################################
@@ -358,12 +355,12 @@ if __name__ == '__main__':
     of course these will only start doing anything after we put data into the line queue
     the function we call is actually a wrapper for another function.(s)
     This one reads from the pod queue, passes each line some analysis function(s), gets the results and sends to the result queue'''
-    for x in range(nProcs):
+    for x in range(args.threads):
         worker = Process(target=analysisWrapper,args=(inQueue,doneQueue,args.inputGenoFormat,args.outputGenoFormat,args.alleleOrder,
                                                     headers,include,exclude,samples,minCalls,minPopCallsDict,minAlleles,maxAlleles,
                                                     minPopAllelesDict,maxPopAllelesDict,minVarCount,maxHet,minFreq,maxFreq,
                                                     HWE_P,HWE_side,popDict,ploidyDict,fixed,args.nearlyFixedDiff,args.forcePloidy,
-                                                    args.partialToMissing,args.thinDist,precomp,args.noTest,))
+                                                    args.partialToMissing,args.thinDist,precomp,args.verbose,args.noTest,))
         worker.daemon = True
         worker.start()
 
@@ -389,8 +386,7 @@ if __name__ == '__main__':
 
     #place lines into pods
     #pass pods on to processor(s)
-    podSize = args.podSize
-
+    
     pod = []
     podNumber = 0
 
@@ -398,7 +394,7 @@ if __name__ == '__main__':
         linesRead += 1
         pod.append((linesRead, line))
         
-        if linesRead % podSize == 0:
+        if linesRead % args.podSize == 0:
             inQueue.put((podNumber,pod))
             if verbose:
                 sys.stderr.write("Pod {} sent for analysis...\n".format(podNumber))
