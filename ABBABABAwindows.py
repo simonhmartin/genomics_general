@@ -82,7 +82,7 @@ def sorter(resultQueue, writeQueue, verbose):
       sortBuffer[str(resNumber)] = (result,isGood)
 
 '''a writer function that writes the sorted result. This is also generic'''
-def writer(writeQueue, out, writeFailedWindows=False):
+def writer(writeQueue, out, writeFailedWindows=False, verbose):
     global resultsWritten
     global resultsHandled
     while True:
@@ -191,8 +191,6 @@ if __name__ == '__main__':
 
     #other
     threads = args.Threads
-    verbose = args.verbose
-
 
     ############## parse populations
 
@@ -281,12 +279,12 @@ if __name__ == '__main__':
 
 
     '''thread for sorting results'''
-    worker = Thread(target=sorter, args=(resultQueue,writeQueue,verbose,))
+    worker = Thread(target=sorter, args=(resultQueue,writeQueue,args.verbose,))
     worker.daemon = True
     worker.start()
 
     '''start thread for writing the results'''
-    worker = Thread(target=writer, args=(writeQueue, outFile, args.writeFailedWindows,))
+    worker = Thread(target=writer, args=(writeQueue, outFile, args.writeFailedWindows,args.verbose))
     worker.daemon = True
     worker.start()
 
