@@ -365,7 +365,7 @@ if __name__ == '__main__':
         worker.start()
 
     '''start two threads for sorting and writing the results'''
-    worker = Thread(target=sorter, args=(doneQueue,writeQueue,verbose,))
+    worker = Thread(target=sorter, args=(doneQueue,writeQueue,args.verbose,))
     worker.daemon = True
     worker.start()
 
@@ -396,7 +396,7 @@ if __name__ == '__main__':
         
         if linesRead % args.podSize == 0:
             inQueue.put((podNumber,pod))
-            if verbose:
+            if args.verbose:
                 sys.stderr.write("Pod {} sent for analysis...\n".format(podNumber))
             podNumber += 1
             podsQueued += 1
