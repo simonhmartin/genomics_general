@@ -373,6 +373,7 @@ if (args.inputType == "genotypes" or args.inputType == "baseCounts") and (args.p
 else:
     #otherwise just consider all is ingroups
     inPopNames = popNames
+    outgroup = None
 
 
 #if sub sampling
