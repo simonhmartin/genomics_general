@@ -186,7 +186,7 @@ if __name__ == '__main__':
     parser.add_argument("--haploid", help="Alternatively just name samples that are haploid (comma separated)", action = "store", metavar = "sample names")
     parser.add_argument("--inferPloidy", help="Ploidy will be inferred in each window (NOT RECOMMENED)", action = "store_true")
     
-    parser.add_argument("--analysis", help="Type of statistics to get", action = "store", nargs = "+",
+    parser.add_argument("--analysis", help="Type of statistics to get (you can add multiple, separated by spaces)", action = "store", nargs = "+",
                         choices = ("popFreq","popDist", "popPairDist", "indPairDist","indHet"),
                         default = ("popDist", "popPairDist",))
     
