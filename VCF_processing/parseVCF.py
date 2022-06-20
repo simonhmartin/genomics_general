@@ -229,7 +229,7 @@ def parseVcfSites(lines, mainHeaders, precomp=True, precompMaxSize=10000, exclud
     
     for elements in lines:
         if isinstance(elements, str): elements = elements.split()
-        if elements[0][0] == "#": continue
+        if len(elements) == 0 or elements[0][0] == "#": continue
         if excludeDuplicates:
             if elements[0] == lastChrom and elements[1] == lastPos: continue
             lastChrom = elements[0]
