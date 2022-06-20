@@ -74,7 +74,7 @@ if refDict:
         for x in range(len(scafs_lengths)):
             outFile.write("##contig=<ID={},length={}>\n".format(scafs_lengths[x][0],scafs_lengths[x][1]))
 
-outFile.write("##FORMAT=<ID=GT,Number=1,Type=String,Description='Genotype'>\n")
+outFile.write('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n')
 
 outFile.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t" + "\t".join(name for name in namesToUse) + "\n")
 
