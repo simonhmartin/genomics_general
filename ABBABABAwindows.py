@@ -82,7 +82,7 @@ def sorter(resultQueue, writeQueue, verbose):
       sortBuffer[str(resNumber)] = (result,isGood)
 
 '''a writer function that writes the sorted result. This is also generic'''
-def writer(writeQueue, out, writeFailedWindows=False, verbose):
+def writer(writeQueue, out, writeFailedWindows=False, verbose=False):
     global resultsWritten
     global resultsHandled
     while True:
