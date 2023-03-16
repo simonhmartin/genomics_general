@@ -1061,6 +1061,27 @@ class Alignment:
             for y in range(x,self.l):
                 LDmat[x,y] = LDmat[y,x] = LD(self.numArray[:,x],self.numArray[:,y])[stat]
         return LDmat
+    
+    def H12stats(self, maxDist=0):
+        distMat = self.distMatrix() if self._distMat_ is None else self._distMat_
+        output = {}
+        for groupName in np.unique(self.groups):
+            groupIndices = np.where(self.groups==groupName)[0]
+            groupDistMat = distMat[np.ix_(groupIndices,groupIndices)]
+            clusterSize = np.array(distMat_to_cluster_sizes(groupDistMat, maxDist))
+            clusterFreq = clusterSize / clusterSize.sum()
+            H1 = (clusterFreq**2).sum()
+            if len(clusterFreq) > 1:
+                H12 = H1 + 2*clusterFreq[0]*clusterFreq[1]
+                H2 = (clusterFreq[1:]**2).sum()
+            else:
+                H12 = H1
+                H2 = 0
+            output["H1_"+groupName] = H1
+            output["H12_"+groupName] = H12
+            output["H2_"+groupName] = H2
+        
+        return output
 
 
 def genoToAlignment(seqDict, sampleData=None, genoFormat = "diplo", positions = None):
@@ -1198,6 +1219,32 @@ def distMatrix(sequences):
             distMat[i,j] = distMat[j,i] = numHamming(DNAarray[i,:][nanMask], DNAarray[j,:][nanMask])
     return distMat
 
+
+
+#function to count clusters given a distance matrix
+def distMat_to_cluster_sizes(distMat, maxDist=0):
+    #number of members in each cluster
+    clusterSize = []
+    
+    #matrix saying whether each two entires cluster together
+    matchMat = distMat <= maxDist
+    
+    #now iteratievly find the intry with the most matches and use that to form the next biggest cluster
+    while(matchMat.shape[0] > 0):
+        #entry with the most matches
+        mostMatched = matchMat.sum(axis=1).argmax()
+        matches = matchMat[mostMatched,].sum()
+        if matches > 1:
+            #if there are multiple matches, we have a cluster
+            clusterSize.append(matches)
+            #now retain only those entries that were not matched
+            keep = np.invert(matchMat[mostMatched,])
+            matchMat = matchMat[np.ix_(keep,keep)]
+        else:
+            #if there are no matches, we are done finding clusters, so just add 1s to the cluster size list
+            clusterSize += [1]*matchMat.shape[0]
+            break
+    return clusterSize
 
 
 class SampleData:

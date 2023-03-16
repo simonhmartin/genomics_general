@@ -26,7 +26,7 @@ else:
 '''A function that reads from the window queue, calls some other function and writes to the results queue
 This function needs to be tailored to the particular analysis funcion(s) you're using. This is the function that will run on each of the N cores.'''
 def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, minSites,
-                  analysis, stats, minData, addWindowID=False, roundTo=4):
+                  analysis, stats, hapDist, minData, addWindowID=False, roundTo=4):
     while True:
         windowNumber,window = windowQueue.get() # retrieve window
         
@@ -59,6 +59,9 @@ def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, mi
             if "indHet" in analysis:
                 hetDict = Aln.sampleHet()
                 for key in hetDict.keys(): statsDict["het_" + key] = hetDict[key]
+            
+            if "hapStats" in analysis:
+                statsDict.update(Aln.H12stats(maxDist=hapDist))
             
             values = [round(statsDict[stat], roundTo) for stat in stats]
         
@@ -187,8 +190,10 @@ if __name__ == '__main__':
     parser.add_argument("--inferPloidy", help="Ploidy will be inferred in each window (NOT RECOMMENED)", action = "store_true")
     
     parser.add_argument("--analysis", help="Type of statistics to get (you can add multiple, separated by spaces)", action = "store", nargs = "+",
-                        choices = ("popFreq","popDist", "popPairDist", "indPairDist","indHet"),
+                        choices = ("popFreq","popDist", "popPairDist", "indPairDist","indHet", "hapStats"),
                         default = ("popDist", "popPairDist",))
+    
+    parser.add_argument("--hapDist", help="For hapStats, maximum proportional distance to consider haplotypes as distinct", type=float, default=0)
     
     parser.add_argument("--roundTo", help="Round stats to X decimal places", type=int, default=4)
     
@@ -281,7 +286,7 @@ if __name__ == '__main__':
             allInds = gf.readline().split()[2:]
     
     #if at this point there are no populations specified, we just make a singe population called "all"
-    if len(popNames) == 0 and ("popFreq" in args.analysis or "popDist" in args.analysis or "popPairDist" in args.analysis):
+    if len(popNames) == 0 and ("popFreq" in args.analysis or "popDist" in args.analysis or "popPairDist" in args.analysis or "hapStats" in args.analysis):
         popNames.append("all")
         popInds.append(allInds)
     
@@ -341,6 +346,10 @@ if __name__ == '__main__':
     if "indHet" in args.analysis:
         stats += ["het_" + n for n in allInds]
     
+    if "hapStats" in args.analysis:
+        stats += ["H1_" + n for n in popNames]
+        stats += ["H12_" + n for n in popNames]
+        stats += ["H2_" + n for n in popNames]
     
     outFile.write(",".join(stats) + "\n")
     
@@ -388,7 +397,7 @@ if __name__ == '__main__':
     sys.stderr.write("\nStarting {} worker threads\n".format(args.threads))
     for x in range(args.threads):
         workerThread = Process(target=stats_wrapper, args = (windowQueue, resultQueue, windType, genoFormat, sampleData, minSites,
-                                                        args.analysis, stats, args.minData,  args.addWindowID,args.roundTo))
+                                                        args.analysis, stats, args.hapDist, args.minData,  args.addWindowID, args.roundTo))
         workerThread.daemon = True
         workerThread.start()
         workerThreads.append(workerThread)
