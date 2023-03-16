@@ -95,7 +95,7 @@ def sorter(doneQueue, writeQueue, verbose):
 
 
 '''a writer function that writes the sorted result. This is also generic'''
-def writer(writeQueue, out):
+def writer(writeQueue, out, verbose):
     global podsWritten
     global linesWritten
     while True:
@@ -370,7 +370,7 @@ if __name__ == '__main__':
     worker.start()
 
     '''start one Process for sorting and writing the results'''
-    worker = Thread(target=writer, args=(writeQueue,Out,))
+    worker = Thread(target=writer, args=(writeQueue,Out,args.verbose,))
     worker.daemon = True
     worker.start()
 
@@ -408,7 +408,7 @@ if __name__ == '__main__':
     if len(pod) > 0:
         inQueue.put((podNumber,pod))
         podsQueued += 1
-        if verbose:
+        if args.verbose:
                 sys.stderr.write("Pod {} sent for analysis...\n".format(podNumber))
 
 
