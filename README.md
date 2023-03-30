@@ -137,7 +137,7 @@ D4  popD
 ___
 ## Allele frequencies per site
 
-The script `freq.py` computes allele frequencies at each site, eitehr for each base, the minor allele, or the derived allele (if an outgroup is provided). It requires the script `genomics.py` to be present in the same directory, or in your Python path.
+The script `freq.py` computes allele frequencies at each site, either for each base, the minor allele, or the derived allele (if an outgroup is provided). It requires the script `genomics.py` to be present in the same directory, or in your Python path.
 
 #### Example command
 ```bash
@@ -158,6 +158,35 @@ Output is a `.csv`. If you add `.gz` it will be gzipped.
 | `--target minor`     | Export the frequency of the minor (rarer) allele at each site (based on all included individuals). This can be at most 0.5 for the whole dataset, but can exceed 0.5 in certain populations |
 | `--target derived`        | Export the frequency of the derived allele. **NOTE**: this assumes that the *last* population listed with `-p` is the outgroup. |
 
+
+___
+## Site frequency spectrum
+
+The script `sfs.py` computes site frequency spectrum (SFS, also called the allele frequency spectrum) from input variants. It requires the script `genomics.py` to be present in the same directory, or in your Python path.
+
+The input for sfs.py is produced by `freq.py` (see above). These two scripts can be combined with a pipe.
+
+#### Example commands
+```bash
+#1D folded (derived allele) sfs
+python freq.py -g input.geno.gz -f phased --threads 10 -p pop1 -p pop2 -p outgroup | \
+python sfs.py --inputType baseCounts -p pop1 -p pop2 -p outgroup \
+--FSpops pop1 pop2 --polarized --subsample 10 10 --pref mydata. --suff .subsample10.sfs
+
+#2D unfolded (minor allele) SFS
+python freq.py -g input.geno.gz -f phased --threads 10 -p pop1 -p pop2 | \
+python sfs.py --inputType baseCounts -p pop1 -p pop2 \
+--FSpops pop1 pop2 --doPairs --subsample 10 10 --pref mydata. --suff .subsample10.sfs
+```
+
+#### Notes
+
+* Input is a `.geno` file as shown above. This can be gzipped (`.geno.gz`).
+* Output is a table giving the number of sites with each allele count.
+
+* `--polarized` will produce an unfolded SFS assuming the final population named is the outgroup
+
+* `--doPairs`, `--doTrios` and `doQuartets` will also export the 2D, 3D and 4D SFS for all pairs, trios or quartets of populations. 
 
 
 ---
@@ -258,7 +287,7 @@ Given a genome annotation file, the script `codingSiteTypes.py` classifies each 
 #### Example Command
 
 ```bash
-python codingSiteTypes.py -a annotation.gff3.gz -f gff -r reference.fasta -v variants.vcf.gz --ignoreConflicts | bgzip > output.coding_site_types.tsv.gz
+python codingSiteTypes.py -a annotation.gff3.gz -f gff -r reference.fasta.gz -v variants.vcf.gz --ignoreConflicts | bgzip > output.coding_site_types.tsv.gz
 ```
 `python distMat.py -h` will print a list of command options.
 
@@ -266,6 +295,7 @@ python codingSiteTypes.py -a annotation.gff3.gz -f gff -r reference.fasta -v var
 
 * You will need a annotation file in either .gff3 or .gtf format. Specify the format using `-f gff` or `-f gtf`
 * The VCF file is optional. If provided, sites can be identified as synonymus or nonsynonymous variants. It also tends to make the classification of degeneracy more conservative.
+* All the input files can be gzipped, but they don't have to be.
 * The output has five columns: `scaffold`, `position`, `codon_position`, `substitution_type` and `degeneracy`.
 * `substitution_type` can be synonymous (`syn`) or nonsynonymous (`non`), or simply `NA`, if the site is not variable in the dataset, or if no VCF file is provided.
 * Degeneracy tells how many of the four possible states at this site will result in the same amino acid for the codon.
