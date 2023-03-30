@@ -9,6 +9,7 @@
 * [Filtering genotype files prior to further analysis](#filtering_genotype_files_prior_to_further_analysis)
 * [Diversity and divergence analyses in sliding windows](#diversity-and-divergence-analyses-in-sliding-windows)
 * [Allele frequencies per site](#Allele-frequencies-per-site)
+* [Site frequency spectrum](#Site-frequency-spectrum)
 * [Distance matrix](#distance-matrix)
 * [ABBA-BABA statistics in sliding windows](#abba-baba-statistics-in-sliding-windows)
 * [Trees for sliding windows](#trees-for-sliding-windows)
