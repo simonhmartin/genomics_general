@@ -133,6 +133,32 @@ D4  popD
 * The script can run on multiple cores (`-T` flag). Try different numbers, as using too many can slow the script down (due to the difficulty in sorting the outputs coming from the different cores).
 
 ___
+## Allele frequencies per site
+
+The script `freq.py` computes allele frequencies at each site, eitehr for each base, the minor allele, or the derived allele (if an outgroup is provided). It requires the script `genomics.py` to be present in the same directory, or in your Python path.
+
+#### Example command
+```bash
+python freq.py -g input.geno.gz -p pop1 -p pop2 --popsFile populations.txt --target derived --threads 10
+```
+
+#### Notes
+
+* Input is a `.geno` file as shown above. This can be gzipped (`.geno.gz`).
+Output is a `.csv`. If you add `.gz` it will be gzipped.
+
+* If you do not include the `--target` option, the script will export the **count** (i.e. an integer) of **each base** (`A`, `C`, `G`, `T`) for ech population.
+
+* If you set `--target`, you have two options
+
+| Wndow Type | Description |
+| :-----------: | ----------- | 
+| `--target minor`     | Export the frequency of the minor (rarer) allele at each site (based on all included individuals). This can be at most 0.5 for the whole dataset, but can exceed 0.5 in certain populations |
+| `--target derived`        | Export the frequency of the derived allele. **NOTE**: this assumes that the *last* population listed with `-p` is the outgroup. |
+
+
+
+---
 ## Distance matrix
 
 The script `distMat.py`	computes a distance matrix among all pairs of individuals. This can be computed either for the entire input file or in windows, as in the popgenWindows script above. This works for samples of any ploidy or mix of ploidies. For ploidy > 1, the pairwise diatance will be the average diatance among all haplotypes in the two individuals.
@@ -222,11 +248,24 @@ python phyml_sliding_windows.py -T 10 -g input.phased.geno.gz --prefix output.ph
 * To make neighbour-joining trees, use the Phyml script, and set `--optimise n`, which tells it not to do any ML optimisation.
 
 
+---
+## Classify coding sites
 
+The script `codingSiteTypes.py` classifies each site within a codon according to its codon position, synonymous/non-synonymopus (if it's a veriant) and degeneracy.
 
+#### Example Command
 
+```bash
+python codingSiteTypes.py -a annotation.gff3.gz -f gff -r reference.fasta -v variants.vcf.gz --ignoreConflicts | bgzip > output.coding_site_types.tsv.gz
+```
+`python distMat.py -h` will print a list of command options.
 
+#### Notes
 
+* The output has five columns: `scaffold`, `position`, `codon_position`, `substitution_type` and `degeneracy`.
+* `substitution_type` can be synonymous (`syn`) or nonsynonymous (`non`), or simply `NA`, if the site is not variable in the dataset, or if no VCF file is provided.
+* Degeneracy tells how many of the four possible states at this site will result in the same amino acid for the codon.
 
+* It might be useful to make a BED file for sites of a given type. For example, to make a BED file for four-fold degenerate (4D) sites, you can use: `gunzip -c output.coding_site_types.tsv.gz | awk 'BEGIN {OFS="\t"}; $5=="4" {print($1,$2-1,$2)}' > output.4Dsites.bed`
 
 
