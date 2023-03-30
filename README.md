@@ -8,6 +8,7 @@
 * [Processing VCF files](#processing-vcf-files)
 * [Filtering genotype files prior to further analysis](#filtering_genotype_files_prior_to_further_analysis)
 * [Diversity and divergence analyses in sliding windows](#diversity-and-divergence-analyses-in-sliding-windows)
+* [Allele frequencies per site](#Allele-frequencies-per-site)
 * [Distance matrix](#distance-matrix)
 * [ABBA-BABA statistics in sliding windows](#abba-baba-statistics-in-sliding-windows)
 * [Trees for sliding windows](#trees-for-sliding-windows)
@@ -251,7 +252,7 @@ python phyml_sliding_windows.py -T 10 -g input.phased.geno.gz --prefix output.ph
 ---
 ## Classify coding sites
 
-The script `codingSiteTypes.py` classifies each site within a codon according to its codon position, synonymous/non-synonymopus (if it's a veriant) and degeneracy.
+Given a genome annotation file, the script `codingSiteTypes.py` classifies each site within a codon according to its codon position, synonymous/non-synonymopus (if it's a variant) and degeneracy.
 
 #### Example Command
 
@@ -262,10 +263,11 @@ python codingSiteTypes.py -a annotation.gff3.gz -f gff -r reference.fasta -v var
 
 #### Notes
 
+* You will need a annotation file in either .gff3 or .gtf format. Specify the format using `-f gff` or `-f gtf`
+* The VCF file is optional. If provided, sites can be identified as synonymus or nonsynonymous variants. It also tends to make the classification of degeneracy more conservative.
 * The output has five columns: `scaffold`, `position`, `codon_position`, `substitution_type` and `degeneracy`.
 * `substitution_type` can be synonymous (`syn`) or nonsynonymous (`non`), or simply `NA`, if the site is not variable in the dataset, or if no VCF file is provided.
 * Degeneracy tells how many of the four possible states at this site will result in the same amino acid for the codon.
-
 * It might be useful to make a BED file for sites of a given type. For example, to make a BED file for four-fold degenerate (4D) sites, you can use: `gunzip -c output.coding_site_types.tsv.gz | awk 'BEGIN {OFS="\t"}; $5=="4" {print($1,$2-1,$2)}' > output.4Dsites.bed`
 
 
