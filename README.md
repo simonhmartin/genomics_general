@@ -12,6 +12,7 @@
 * [Distance matrix](#distance-matrix)
 * [ABBA-BABA statistics in sliding windows](#abba-baba-statistics-in-sliding-windows)
 * [Trees for sliding windows](#trees-for-sliding-windows)
+* [Classify coding sites](#Classify-coding-sites)
 
 ---
 
