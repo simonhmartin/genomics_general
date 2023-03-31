@@ -31,6 +31,8 @@ parser.add_argument("-o", "--outFile", help="Output siteTypes file", action = "s
 parser.add_argument("-v", "--vcf", help="VCF file with variants (only ALTs will be considered)", action='store')
 parser.add_argument("-r", "--ref", help="Genome .fa file. Must also have ", action='store', required = True)
 parser.add_argument("--ignoreConflicts", help="Don't fail if two annotations give conflicting information about the same site", action='store_true')
+parser.add_argument("--scaffoldLookup", help="Table of scaffold names (col1:reference and col2:annotation) if they differ", action = "store")
+parser.add_argument("--useAnnotationScaffoldNames", help="Use the scaffold names in the annotation rather than the reference", action = "store_true")
 
 args = parser.parse_args()
 
@@ -47,6 +49,23 @@ with gzip.open(args.ref,"rt") if args.ref.endswith(".gz") else open(args.ref,"rt
     scaffolds,_sequences_ = genomics.parseFasta(ref.read(), makeUppercase=True)
     sequences = {}
     for i,scaffold in enumerate(scaffolds): sequences[scaffold] = _sequences_[i]
+
+#if a scaffold lookup table is provided, we need to change the names
+if args.scaffoldLookup and args.useAnnotationScaffoldNames:
+    #if we are going to use the annotation scaffold names, change the reference
+    with open(args.scaffoldLookup) as lookup:
+        scafNamesDict = dict([line.split() for line in lookup])
+    sequences_renamed = {}
+    for scaffold in scaffolds: sequences_renamed[scafNamesDict[scaffold]] = sequences[scaffold]
+    sequences = sequences_renamed
+
+if args.scaffoldLookup and args.useAnnotationScaffoldNames:
+    #if we are going to use the reference scaffold names, change the gene data
+    with open(args.scaffoldLookup) as lookup:
+        scafNamesDict = dict([line.split()[::-1] for line in lookup])
+    geneData_renamed = {}
+    for scaffold in scaffolds: geneData_renamed[scaffold] = geneData[scafNamesDict[scaffold]]
+    geneData = geneData_renamed
 
 #open output
 if not args.outFile: outFile = sys.stdout
