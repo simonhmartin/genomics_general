@@ -326,7 +326,7 @@ if __name__ == '__main__':
     if args.outputGenoFormat != "bases":
         Out.write("\t".join(headers[0:2] + samples) + "\n")
     else:
-        assert args.ploidy != None | args.ploidyFile, "Ploidy must be specified."
+        assert args.ploidy != None or args.ploidyFile, "Ploidy must be specified."
         outSamples = [sample + "_" + letter for sample in samples for letter in string.ascii_uppercase[:ploidyDict[sample]]]
         Out.write("\t".join(headers[0:2] + outSamples) + "\n")
 
