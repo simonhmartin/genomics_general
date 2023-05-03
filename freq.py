@@ -243,7 +243,7 @@ if __name__ == '__main__':
     if not args.indFreqs and not args.population:
         #treat all individuals as a single population
         if args.target == "derived":
-            print("\nNo populations specified. Assuming the final individual is the outgroup for polarising.")
+            print("\nNo populations specified. Assuming the final individual is the outgroup for polarising.", file=sys.stderr)
             popNames = ["ingroup", "outgroup"]
             popInds = [headerInds[:-1], [headerInds[-1]]]
         else:
@@ -253,7 +253,7 @@ if __name__ == '__main__':
     elif args.indFreqs:
         #no populatons just treat each individual as its own population
         if args.target == "derived":
-            print("\nAssuming the final individual is the outgroup for polarising.")
+            print("\nAssuming the final individual is the outgroup for polarising.", file=sys.stderr)
         popNames = headerInds
         popInds = [[ind] for ind in headerInds]
     
