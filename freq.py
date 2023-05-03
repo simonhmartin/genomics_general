@@ -72,7 +72,7 @@ def freqs_wrapper(inQueue, resultQueue, headerLine, genoFormat, sampleData, targ
                 
             else:
                 #otherwise get minor allele.
-                baseColumns = np.array([genomics.minorAllele(aln.numArray[:,i][aln.nanMask[:,i]]) for i in xrange(aln.l)]).reshape([aln.l,1])
+                baseColumns = np.array([genomics.minorAllele(aln.numArray[:,i][aln.nanMask[:,i]]) for i in range(aln.l)]).reshape([aln.l,1])
             
             goodSites = np.apply_along_axis(lambda x: ~np.any(np.isnan(x)),1,baseColumns)
             
@@ -190,8 +190,10 @@ if __name__ == '__main__':
 
     #populations
     parser.add_argument("-p", "--population", help="Pop name and optionally sample names (separated by commas)",
-                        required = True, action='append', nargs="+", metavar=("popName","[samples]"))
+                        required = False, action='append', nargs="+", metavar=("popName","[samples]"))
     parser.add_argument("--popsFile", help="Optional file of sample names and populations", action = "store", required = False)
+
+    parser.add_argument("--indFreqs", help="Return a frequency for each individual (i.e. treat individuals as populations)", action='store_true')
 
     #Frequency for all bases or a single base
     parser.add_argument("--target", help="All or single base frequency (derived assumes last pop is outgroup)", choices = ("minor","derived"),
@@ -222,25 +224,59 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+
+    ############################################################################################################################################
+
+    #open input file
+
+    if args.genoFile:
+        if args.genoFile[-3:] == ".gz": genoFile = gzip.open(args.genoFile, "rt")
+        else: genoFile = open(args.genoFile, "rt")
+    else: genoFile = sys.stdin
+
+    headerLine= genoFile.readline()
+    
+    headerInds = headerLine.split()[2:]
+    
     ############## parse populations
+    
+    if not args.indFreqs and not args.population:
+        #treat all individuals as a single population
+        if args.target == "derived":
+            print("\nNo populations specified. Assuming the final individual is the outgroup for polarising.")
+            popNames = ["ingroup", "outgroup"]
+            popInds = [headerInds[:-1], [headerInds[-1]]]
+        else:
+            popNames = ["all"]
+            popInds = [headerInds]
+    
+    elif args.indFreqs:
+        #no populatons just treat each individual as its own population
+        if args.target == "derived":
+            print("\nAssuming the final individual is the outgroup for polarising.")
+        popNames = headerInds
+        popInds = [[ind] for ind in headerInds]
+    
+    else:
+        popNames = []
+        popInds = []
+        for p in args.population:
+            popNames.append(p[0])
+            if len(p) > 1: popInds.append(p[1].split(","))
+            else: popInds.append([])
 
-    popNames = []
-    popInds = []
-    for p in args.population:
-        popNames.append(p[0])
-        if len(p) > 1: popInds.append(p[1].split(","))
-        else: popInds.append([])
+        if args.popsFile:
+            with open(args.popsFile, "rt") as pf: popDict = dict([ln.split() for ln in pf])
+            for ind in popDict.keys():
+                try: popInds[popNames.index(popDict[ind])].append(ind)
+                except: pass
 
-    if args.popsFile:
-        with open(args.popsFile, "rt") as pf: popDict = dict([ln.split() for ln in pf])
-        for ind in popDict.keys():
-            try: popInds[popNames.index(popDict[ind])].append(ind)
-            except: pass
-
-    for p in popInds: assert len(p) >= 1, "All populations must be represented by at least one sample."
+        for p in popInds: assert len(p) >= 1, "All populations must be represented by at least one sample."
 
     allInds = list(set([i for p in popInds for i in p]))
-
+    
+    print(popInds)
+    
     if args.ploidy is not None:
         ploidy = args.ploidy if len(args.ploidy) != 1 else args.ploidy*len(allInds)
         assert len(ploidy) == len(allInds), "Incorrect number of ploidy values supplied."
@@ -254,17 +290,7 @@ if __name__ == '__main__':
 
     sampleData = genomics.SampleData(popNames = popNames, popInds = popInds, ploidyDict = ploidyDict)
 
-
-    ############################################################################################################################################
-
-    #open files
-
-    if args.genoFile:
-        if args.genoFile[-3:] == ".gz": genoFile = gzip.open(args.genoFile, "rt")
-        else: genoFile = open(args.genoFile, "rt")
-    else: genoFile = sys.stdin
-
-    headerLine= genoFile.readline()
+    #open ouput file
 
     if args.outFile:
         if args.outFile[-3:] == ".gz": outFile = gzip.open(args.outFile, "wt")
