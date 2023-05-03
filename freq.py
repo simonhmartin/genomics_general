@@ -275,8 +275,6 @@ if __name__ == '__main__':
 
     allInds = list(set([i for p in popInds for i in p]))
     
-    print(popInds)
-    
     if args.ploidy is not None:
         ploidy = args.ploidy if len(args.ploidy) != 1 else args.ploidy*len(allInds)
         assert len(ploidy) == len(allInds), "Incorrect number of ploidy values supplied."
