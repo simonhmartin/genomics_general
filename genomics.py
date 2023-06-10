@@ -769,7 +769,7 @@ def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAllel
             elif not inHWE(site.asList(mode="diplo"), HWE_P, side = HWE_side): return False
     
     #if there are population-specific filters
-    popNames = site.pops.keys()
+    popNames = list(site.pops.keys())
     if len(popNames) >= 1:        
         for popName in popNames:
             if minPopCalls:
