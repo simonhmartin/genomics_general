@@ -56,8 +56,15 @@ if args.scaffoldLookup and args.useAnnotationScaffoldNames:
     with open(args.scaffoldLookup) as lookup:
         scafNamesDict = dict([line.split() for line in lookup])
     sequences_renamed = {}
-    for scaffold in scaffolds: sequences_renamed[scafNamesDict[scaffold]] = sequences[scaffold]
+    scaffolds_renamed = []
+    for scaffold in scaffolds:
+        if scaffold in scafNamesDict.keys():
+            sequences_renamed[scafNamesDict[scaffold]] = sequences[scaffold]
+            scaffolds_renamed.append(scafNamesDict[scaffold])
+        else:
+            sys.stderr.write(f" WARNING!: {scaffold} is not in scaffoldLookup and will not be analysed\n")
     sequences = sequences_renamed
+    scaffolds = scaffolds_renamed
 
 if args.scaffoldLookup and args.useAnnotationScaffoldNames:
     #if we are going to use the reference scaffold names, change the gene data
