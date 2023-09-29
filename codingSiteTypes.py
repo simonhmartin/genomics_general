@@ -66,7 +66,8 @@ if args.scaffoldLookup and args.useAnnotationScaffoldNames:
     sequences = sequences_renamed
     scaffolds = scaffolds_renamed
 
-if args.scaffoldLookup and args.useAnnotationScaffoldNames:
+
+if args.scaffoldLookup and not args.useAnnotationScaffoldNames:
     #if we are going to use the reference scaffold names, change the gene data
     with open(args.scaffoldLookup) as lookup:
         scafNamesDict = dict([line.split()[::-1] for line in lookup])
