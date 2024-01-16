@@ -18,7 +18,7 @@ def GTtype(alleles):
     else: return "HomAlt"
 
 
-re_cigar = re.compile("\d+|[MXDI]")
+re_cigar = re.compile(r"\d+|[MXDI]")
 
 re_phaser = re.compile("[/|]")
 
@@ -281,6 +281,7 @@ def addArgs(parser, requireInfile=False):
     parser.add_argument("--ploidyMismatchToMissing", help="Set genotypes with mismatched ploidy to missing", action = "store_true")
     parser.add_argument("--keepPartial", help="Keep genotypes where some but not all alleles are missing", action = "store_true")
     parser.add_argument("--addRefTrack", help="Add a third column with the header REF and the reference allele", action = "store_true")
+    parser.add_argument("--noHeader", help="Output without header line", action = "store_true")
     
     parser.add_argument("--field", help="Optional - format field to extract", action = "store")
     parser.add_argument("--missing", help="Value to use for missing data", action = "store")
@@ -361,10 +362,10 @@ if __name__ == "__main__":
     
     ##########################################################################################################################
     
-    first_columns = ["#CHROM", "POS"]
-    if args.addRefTrack: first_columns.append("REF")
-    
-    outFile.write(args.outSep.join(first_columns + samples) + "\n")
+    if not args.noHeader:
+        first_columns = ["#CHROM", "POS"]
+        if args.addRefTrack: first_columns.append("REF")
+        outFile.write(args.outSep.join(first_columns + samples) + "\n")
     
     for vcfSite in parseVcfSites(inFile, headData["mainHeaders"], excludeDuplicates=args.excludeDuplicates, simplifyALT=simplifyALT):
         if (exclude and vcfSite.CHROM in exclude) or (include and vcfSite.CHROM not in include): continue
