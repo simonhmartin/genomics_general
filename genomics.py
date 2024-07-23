@@ -790,7 +790,7 @@ def siteTest(site,samples=None,minCalls=1,minPopCalls=None,minAlleles=0,maxAllel
                     if not minPopAlleles[popNames[x]] <= len(allelesByPop[x]) <= maxPopAlleles[popNames[x]]: return False
         
         #if we want nearly fixed differences, we need to get pop freqs and find any freq difference big enough
-        elif nearlyFixedDiff is not None:
+        if nearlyFixedDiff is not None:
             popFreqs = [site.baseFreqs(pop=popName) for popName in popNames]
             freqDiffs = [popFreqs[c[0]] - popFreqs[c[1]] for c in list(itertools.combinations(range(len(popNames)), 2))]
             if not np.any(np.absolute(np.concatenate(freqDiffs)) >= nearlyFixedDiff): return False
