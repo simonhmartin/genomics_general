@@ -184,7 +184,7 @@ if __name__ == '__main__':
     ### parse arguments
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("-g", "--genoFile", help="Input vcf file", action = "store")
+    parser.add_argument("-g", "--genoFile", help="Input geno file", action = "store")
     parser.add_argument("-o", "--outFile", help="Output csv file", action = "store")
     parser.add_argument("-f", "--genoFormat", help="Data format for output", action = "store", choices = ("phased","diplo","alleles"), default = "phased")
 
