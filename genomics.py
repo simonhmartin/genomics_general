@@ -1919,12 +1919,14 @@ class GenoFileReader:
     
     def siteBySite(self, asDict=True):
         for line in self.genoFile:
-            yield parseGenoLine(line, self.names, self.scafCol, self.posCol, self.firstSampleCol, self.type, self.splitPhased, asDict,
-                                self.precompDict, addToPrecomp=self.precompDict["__counter__"]<self.precompDict["__maxSize__"])
+            if line[0] != "#":
+                yield parseGenoLine(line, self.names, self.scafCol, self.posCol, self.firstSampleCol, self.type, self.splitPhased, asDict,
+                                    self.precompDict, addToPrecomp=self.precompDict["__counter__"]<self.precompDict["__maxSize__"])
     
     def nextSite(self, asDict=True):
         try: line = getNext(self.genoFile)
         except: line = None
+        if line and line[0] == "#": return self.nextSite(asDict=asDict)
         return parseGenoLine(line, self.names, self.scafCol, self.posCol, self.firstSampleCol, self.type, self.splitPhased, asDict,
                             self.precompDict, addToPrecomp=self.precompDict["__counter__"]<self.precompDict["__maxSize__"])
 

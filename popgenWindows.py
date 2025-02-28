@@ -67,7 +67,7 @@ def stats_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData, mi
         
         else:
             isGood = False
-            values = [np.NaN]*len(stats)
+            values = [np.nan]*len(stats)
         
         results = [] if not addWindowID else [window.ID]
         results += [scaf,start,end,mid,sites] + values
