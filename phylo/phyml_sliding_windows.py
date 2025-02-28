@@ -27,7 +27,7 @@ def phymlTree(seqArray, seqNames, model, opt, phyml, prefix = "", tmpDir = None,
     tempAln = tempfile.NamedTemporaryFile(mode="w",prefix=prefix,suffix=".phy",dir=tmpDir,delete=False)
     localName = tempAln.name.rsplit("/",1)[1]
     with tempAln as tA: tA.write(genomics.makeAlnString(seqNames,seqArray))
-    phymlCommand = " ".join([phyml,"--input", tempAln.name,"--model", model, "-o", opt, "-b 0", ">>", log])
+    phymlCommand = " ".join([phyml,"--input", tempAln.name,"--model", model, "-o", opt, "-b 0 --quiet", ">>", log])
     if test: sys.stderr.write("phyml command:\n" + phymlCommand + "\n")
     os.system(phymlCommand)
     #try retrieve the result  
