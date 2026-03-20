@@ -27,10 +27,10 @@ def makeVCFline(scaffold, position, GTdict, names, refDict=None, genoFormat=None
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-g", "--genoFile", help="Input vcf file", action = "store")
-parser.add_argument("-f", "--genoFormat", help="Genotype format [otherwise will be inferred (slower)]", action = "store",choices = ["phased","diplo","paired"])
+parser.add_argument("-f", "--genoFormat", help="Genotype format [otherwise will be inferred (slower)]", action = "store",choices = ["phased","diplo","pairs"])
 parser.add_argument("-o", "--outFile", help="Output vcf file", action = "store")
 parser.add_argument("-r","--reference", help="Reference fasta", action='store')
-parser.add_argument("-s", "--samples", help="Analysis threads", action = "store")
+parser.add_argument("-s", "--samples", help="Samples to include (separated by commas)", action = "store")
 
 args = parser.parse_args()
 
