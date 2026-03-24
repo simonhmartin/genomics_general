@@ -31,7 +31,7 @@ def ABBABABA_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData,
         if windType == "coordinate" or windType == "predefined":
             scaf,start,end,mid,sites = (window.scaffold, window.limits[0], window.limits[1], window.midPos(),window.seqLen())
         else: scaf,start,end,mid,sites = (window.scaffold, window.firstPos(), window.lastPos(),window.midPos(),window.seqLen())
-        sitesUsed = np.NaN
+        sitesUsed = np.nan
         if sites >= minSites:
             #make alignment object
             Aln = genomics.genoToAlignment(window.seqDict(), sampleData, genoFormat = genoFormat)
@@ -42,10 +42,10 @@ def ABBABABA_wrapper(windowQueue, resultQueue, windType, genoFormat, sampleData,
                 values = [round(statsDict[stat],4) for stat in stats]
             else:
                 isGood = False
-                values = [np.NaN]*len(stats)
+                values = [np.nan]*len(stats)
         else:
             isGood = False
-            values = [np.NaN]*len(stats)
+            values = [np.nan]*len(stats)
         results = [] if not addWindowID else [window.ID]
         results += [scaf,start,end,mid,sites,sitesUsed] + values
         resultString = ",".join([str(x) for x in results])
