@@ -32,6 +32,7 @@ parser.add_argument("--scafCol", help="Column of scaffold name", action = "store
 parser.add_argument("--startCol", help="Column of start position", action = "store", type=int, default=2)
 parser.add_argument("--endCol", help="Column of end position", action = "store", type=int, default=2)
 parser.add_argument("--strandCol", help="Column of strand (orientation)", action = "store", type=int)
+parser.add_argument("--floatPositions", help="Treat positions as floating point rather than integer", action = "store_true")
 parser.add_argument("--sep", help="Input file separator", action = "store", default=None)
 parser.add_argument("-f", "--failFile", help="Failed lines file", action = "store")
 parser.add_argument("-a", "--agpFile", help="AGP file for position conversion", action='store')
@@ -56,10 +57,14 @@ else:
         sys.stderr.write("\nWARNING: Failed transfers will not be shown. To catch them, specify a --failFile\n\n") 
 
 
-if args.preset == "vcf": scafCol, startCol, endCol, strandCol = (1,2,2,None)
-elif args.preset == "gff":scafCol, startCol, endCol, strandCol = (1,4,5,7)
-else:scafCol, startCol, endCol, strandCol = (args.scafCol, args.startCol, args.endCol, args.strandCol)
+if args.preset == "vcf": scafCol, startCol, endCol, strandCol, floatPos = (1,2,2,None,False)
+elif args.preset == "gff":scafCol, startCol, endCol, strandCol, floatPos = (1,4,5,7,False)
+else:scafCol, startCol, endCol, strandCol, floatPos = (args.scafCol, args.startCol, args.endCol, args.strandCol, args.floatPositions)
 
+if floatPos:
+    getPos = lambda x: float(x)
+else:
+    getPos = lambda x: int(x)
 
 sep=args.sep
 outsep = sep if sep != None else "\t"
@@ -76,7 +81,7 @@ if args.agpFile:
     with open(args.agpFile, "rt") as agpFile:
         for line in agpFile:
             if not line.startswith("#"):
-                try:newScaf,newStart,newEnd,part,component,scaf,start,end,strand = line.split()
+                try:newScaf,newStart,newEnd,part,component,scaf,start,end,strand = line.split()[:9]
                 except:
                     if args.allowAGPfails:
                         sys.stderr.write("WARNING: skipping malformed agp line:\n{}".format(line))
@@ -114,8 +119,8 @@ for line in inFile:
     if not line.startswith("#"):
         elements = line.strip().split(sep)
         scaf = elements[scafCol-1]
-        start = float(elements[startCol-1])
-        end = float(elements[endCol-1])
+        start = getPos(elements[startCol-1])
+        end = getPos(elements[endCol-1])
         strand = elements[strandCol-1] if strandCol else "+"
         assert strand == "+" or strand == "-"
         if scaf in transfers:
