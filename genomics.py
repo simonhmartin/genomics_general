@@ -86,7 +86,7 @@ def alleles(bases):
     return [i for i in "ACGT" if i in s]
 
 def nanmean_min(a, min=0):
-    if 1 - (1.* np.isnan(a).sum()/a.size) < min: return np.NaN
+    if 1 - (1.* np.isnan(a).sum()/a.size) < min: return np.nan
     return np.nanmean(a)
 
 ################################################################################
@@ -269,10 +269,10 @@ def chunkList(l, nChunks = None, chunkSize = None, return_indices=False):
     assert not nChunks is chunkSize is None
     if nChunks is not None:
         assert N % nChunks == 0, "list must be divizable by number of chunks"
-        chunkSize = [N/nChunks]*nChunks
+        chunkSize = [N//nChunks]*nChunks
     elif isinstance(chunkSize, int):
         assert N % chunkSize == 0, "list must be divizable by chunk size"
-        chunkSize = [chunkSize]*(N/chunkSize)
+        chunkSize = [chunkSize]*(N//chunkSize)
     elif len(chunkSize) == 1:
         assert N % chunkSize[0] == 0, "list must be divizable by chunk size"
         chunkSize*=(N/chunkSize[0])
@@ -593,7 +593,7 @@ def binBaseFreqs(numArr, asCounts = False):
     n = len(numArr)
     if n == 0:
         if asCounts: return np.zeros(4, dtype=int)
-        else: return np.array([np.NaN]*4)
+        else: return np.array([np.nan]*4)
     else:
         if asCounts: return np.bincount(numArr, minlength=4)
         else: return 1.* np.bincount(numArr, minlength=4) / n
@@ -891,6 +891,15 @@ class Alignment:
     
     def numColumn(self,x): return self.numArray[:,x]
     
+    def getBaseFreqs(self):
+        bases,counts = np.unique(self.array, return_counts=True)
+        all_counts_dict = defaultdict(int)
+        all_counts_dict.update(dict(zip(bases,counts)))
+        base_counts_dict = dict([(b, all_counts_dict[b]) for b in "ACGT"])
+        total = sum(base_counts_dict.values())
+        base_freqs_dict = dict([(b, base_counts_dict[b]/total) for b in "ACGT"])
+        return base_freqs_dict
+    
     def pairDist(self, i, j):
         nanMask = self.nanMask[i,:] & self.nanMask[j,:]
         return numHamming(self.numArray[i,:][nanMask], self.numArray[j,:][nanMask])
@@ -903,27 +912,32 @@ class Alignment:
         self._distMat_ = distMat
         if minSites:
             pairNonNan = self._pairNonNan_ if self._pairNonNan_ is not None else self.pairNonNan()
-            distMat[pairNonNan < minSites] = np.NaN
+            distMat[pairNonNan < minSites] = np.nan
         return distMat
     
-    def sampleHet(self, sampleNames=None, asList = False):
+    def sampleHet(self, sampleNames=None, asList = False, minSites=None):
+        _minSites = 1 if minSites is None else minSites
         if sampleNames is None: sampleNames,sampleIndices = uniqueIndices(self.sampleNames, preserveOrder=True)
         else: sampleIndices = [np.where(self.sampleNames == sampleName)[0] for sampleName in sampleNames]
         #if a pre-computed distance matrix is available, use that
         if self._distMat_ is not None:
-            hets = [self._distMat_[x[0],x[1]] if len(x)==2 else np.NaN for x in sampleIndices]
+            hets = [self._distMat_[x[0],x[1]] if len(x)==2 & np.sum(self.nanMask[x[0],:] & self.nanMask[x[1],:]) >=_minSites else np.nan for x in sampleIndices]
         #otherwise compute pairwise distances (i.e. entire matrix not needed)
         else:
-            hets = [self.pairDist(x[0],x[1]) if len(x)==2 else np.NaN for x in sampleIndices]
+            hets = [self.pairDist(x[0],x[1]) if len(x)==2  & np.sum(self.nanMask[x[0],:] & self.nanMask[x[1],:]) >=_minSites else np.nan for x in sampleIndices]
+        
         return dict(zip(sampleNames,hets)) if not asList else hets
     
     #makes a dict of average distance among samples.
     #if all are haploid, this is just a dictionary of the output of distMatrix()
     #if some have ploidy > 1, this will average distance among sample haplotypes
-    def indPairDists(self, asDict=True, includeSameWithSame=False):
+    def indPairDists(self, asDict=True, includeSameWithSame=False, minSites=None):
         distMat = self.distMatrix() if self._distMat_ is None else self._distMat_ 
+        if minSites:
+            pairNonNan = self._pairNonNan_ if self._pairNonNan_ is not None else self.pairNonNan()
+            distMat[pairNonNan < minSites] = np.nan
         #mask diagonal if necessary
-        if not includeSameWithSame: np.fill_diagonal(distMat, np.NaN) # set all same-with-same to Na
+        if not includeSameWithSame: np.fill_diagonal(distMat, np.nan) # set all same-with-same to Na
         sampleNames,sampleIndices = uniqueIndices(self.sampleNames, preserveOrder=True)
         n = len(sampleNames)
         if asDict:
@@ -944,9 +958,9 @@ class Alignment:
         distMat = self._distMat_ if self._distMat_ is not None else self.distMatrix()
         if minSites:
             pairNonNan = self._pairNonNan_ if self._pairNonNan_ is not None else self.pairNonNan()
-            distMat[pairNonNan < minSites] = np.NaN
+            distMat[pairNonNan < minSites] = np.nan
         
-        np.fill_diagonal(distMat, np.NaN) # set all same-with-same to Na
+        np.fill_diagonal(distMat, np.nan) # set all same-with-same to Na
         
         pops,indices = np.unique(self.groups, return_inverse = True)
         nPops = len(pops)
@@ -1004,7 +1018,7 @@ class Alignment:
                 thetaPi = sum(sitePi)
                 thetaW = S / sum(1./np.arange(1,N))
                 TajD = TajimaD(N, S, thetaPi)
-            else: S=thetaPi=thetaW=TajD=np.NaN
+            else: S=thetaPi=thetaW=TajD=np.nan
             output["l_"+groupName] = l
             output["S_"+groupName] = S
             output["thetaPi_"+groupName] = thetaPi
@@ -1123,7 +1137,7 @@ def LD(basesA, basesB, ancA=None, ancB=None):
     N=arr.shape[0]
     allelesA, countsA = np.unique(arr[:,0], return_counts = True)
     allelesB, countsB = np.unique(arr[:,1], return_counts = True)
-    if not len(allelesA) == len(allelesB) == 2: return {"D":np.NaN, "Dprime": np.NaN, "r":np.NaN, "r2":np.NaN}
+    if not len(allelesA) == len(allelesB) == 2: return {"D":np.nan, "Dprime": np.nan, "r":np.nan, "r2":np.nan}
     
     if ancA is None: ancA = allelesA[countsA==max(countsA)][0]
     else: assert ancA in allelesA, "ancestral allele not present"
@@ -1280,7 +1294,7 @@ class SampleData:
 def popDiv(Aln, doPairs = True):
     #get distance matrix unless a precomputed one is available
     distMat = Aln._distMat_ if Aln._distMat_ is not None else Aln.distMatrix()
-    np.fill_diagonal(distMat, np.NaN) # set all same-with-same to Na
+    np.fill_diagonal(distMat, np.nan) # set all same-with-same to Na
     
     pops,indices = np.unique(Aln.groups, return_inverse = True)
     nPops = len(pops)
@@ -1378,14 +1392,14 @@ def popDiv(Aln, doPairs = True):
     #output["ABBA"] = ABBA
     #output["BABA"] = BABA
     #try: output["D"] = D_numer / D_denom
-    #except: output["D"] = np.NaN
+    #except: output["D"] = np.nan
     #try:
         #if output["D"] >= 0: output["fd"] = D_numer / fd_denom
-        #else: output["fd"] = np.NaN
-    #except: output["fd"] = np.NaN
+        #else: output["fd"] = np.nan
+    #except: output["fd"] = np.nan
     #try:
         #output["fdM"] = D_numer / fdM_denom
-    #except: output["fd"] = np.NaN
+    #except: output["fd"] = np.nan
     #output["sitesUsed"] = sitesUsed
     
     #return output
@@ -1626,7 +1640,7 @@ def fourPop(aln, P1, P2, P3, P4, minData, polarize=False, fixed=False):
                         [f1,f2,d,fd1,fd_new1,fdm1,fdm_new1,fdh1,fdh21,fh1,abba,baba,abaa,baaa,sitesUsed]))
     else:
         return dict(zip(['fhom',"fhom'",'D','fd',"fd'",'fdm',"fdm'",'fdh','fdh2','fh',"ABBA","BABA","ABAA","BAAA","sitesUsed"],
-                        [np.NaN]*14 +[0]))
+                        [np.nan]*14 +[0]))
 
 
 ##new ABBABABA code using numpy arrays
@@ -1678,7 +1692,7 @@ def ABBABABA(aln, P1, P2, P3, P4, minData, polarize=True, fixed=False):
                         [_D_,_fd_,_fdm_,_ABBA_,_BABA_,sitesUsed]))
     else:
         return dict(zip(['D','fd','fdM',"ABBA","BABA","sitesUsed"],
-                        [np.NaN]*6 +[0]))
+                        [np.nan]*6 +[0]))
 
 
 def popSiteFreqs(aln, minData = 0):
@@ -1736,11 +1750,11 @@ class GenoWindow:
         self.sites += sites
         self.positions += positions
     
-    def addSite(self, GTs, position=np.NaN, ignorePosition=False):
+    def addSite(self, GTs, position=np.nan, ignorePosition=False):
         assert len(GTs) == self.n, "Number of genotypes per site must match number of names."
         if not ignorePosition:
             assert self.limits[0] <= position <= self.limits[1], "Position: " + str(position) + " outside of window limits: " + "-".join([str(l) for l in self.limits])
-        else: position = np.NaN
+        else: position = np.nan
         self.positions.append(position)
         self.sites.append(GTs)
     
@@ -1780,7 +1794,7 @@ class GenoWindow:
     
     def midPos(self):
         try: return int(round(sum(self.positions)/len(self.positions)))
-        except: return np.NaN
+        except: return np.nan
 
 
 
@@ -1818,11 +1832,11 @@ class GenoWindow:
         #self.sites += sites
         #self.positions += positions
     
-    #def addSite(self, GTs, position=np.NaN, ignorePosition=False):
+    #def addSite(self, GTs, position=np.nan, ignorePosition=False):
         #assert len(GTs) == self.n, "Number of genotypes per site must match number of names."
         #if not ignorePosition:
             #assert self.limits[0] <= position <= self.limits[1], "Position: " + str(position) + " outside of window limits: " + "-".join([str(l) for l in self.limits])
-        #else: position = np.NaN
+        #else: position = np.nan
         #self.positions.append(position)
         #self.sites.append(GTs)
     
@@ -1865,7 +1879,7 @@ class GenoWindow:
     
     #def midPos(self):
         #try: return int(round(sum(self.positions)/len(self.positions)))
-        #except: return np.NaN
+        #except: return np.nan
 
 def parseGenoLine(line, names, scafCol=0, posCol=1, firstSampleCol=2,
                   type=str, splitPhased=False, asDict = True, precompDict=None, addToPrecomp=True):
@@ -2336,7 +2350,13 @@ def parseRegionList(regionList):
         return (seqName,fromTo[0],fromTo[1],ori,)
     except: return (seqName,None,None,ori,)
 
-
+# a class for genomic intervals.
+# containsPoint() returns a boolean numpy array, with True for all intervals taht contain the specified point
+# containsInterval() is as above but only True if the whole query interval is contained
+# overlapsInterval() is as above but only requires partial overlap
+# sort() sorts the object and does not return anything
+# reduced() collapses all overlapping intervals and returns a new reduced intervals object
+# asRegionsText() returns a list in which each interval is expressed as a string in the standard CHROM:FROM-TO format 
 class Intervals():
     def __init__(self, regions=None, tuples=None, chroms=None, starts=None, ends=None, type=int):
         if regions is not None:
