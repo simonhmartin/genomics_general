@@ -66,10 +66,10 @@ parser.add_argument("-t", "--transfersFile", help="Chromosome and position trans
 args = parser.parse_args()
 
 if not args.inFile: inFile = sys.stdin
-else: inFile = gzip.open(args.inFile,"r") if args.inFile.endswith(".gz") else open(args.inFile,"r")
+else: inFile = gzip.open(args.inFile,"rt") if args.inFile.endswith(".gz") else open(args.inFile,"r")
 
 if not args.outFile: outFile = sys.stdout
-else: outFile = gzip.open(args.outFile,"w") if args.outFile.endswith(".gz") else open(args.outFile,"w")
+else: outFile = gzip.open(args.outFile,"wt") if args.outFile.endswith(".gz") else open(args.outFile,"w")
 
 if not args.transfersFile and not args.agpFile:
     raise ValueError("Please provide an AGP file (or a 'transfers' file)")
@@ -83,10 +83,10 @@ pieces = {}
 newScafs = []
 
 if args.agpFile:
-    with open(args.agpFile, "r") as agpFile:
+    with open(args.agpFile, "rt") as agpFile:
         for line in agpFile:
             if not line.startswith("#"):
-                try:newScaf,newStart,newEnd,part,component,scaf,start,end,strand = line.split()
+                try:newScaf,newStart,newEnd,part,component,scaf,start,end,strand = line.split()[:]
                 except:
                     raise ValueError("AGP file should have 9 columns")
                 if component == "N" or component == "U": continue
@@ -99,7 +99,7 @@ if args.agpFile:
                 except: pass
 
 else:
-    with open(args.transfersFile, "r") as transfersFile:
+    with open(args.transfersFile, "rt") as transfersFile:
         for line in transfersFile:
             if not line.startswith("#"):
                 try:newScaf,newStart,newEnd,scaf,start,end,strand = line.split()
@@ -124,14 +124,14 @@ seqDict = dict(zip(scafs,seqs))
 newSeqs = []
 
 for newScaf in newScafs:
-    sys.stderr.write("Making new sequence: {}, {} pieces, {} bp.\n".format(newScaf,
-                                                                         pieces[newScaf].shape[0],
-                                                                         np.max(pieces[newScaf][:,1])))
+    n_pieces = pieces[newScaf].shape[0]
+    length = np.max(pieces[newScaf][:,1]) if n_pieces > 0 else 0
+    sys.stderr.write(f"Making new sequence: {newScaf}, {n_pieces} pieces, {length} bp.\n")
     newSeq = ["N"]*np.max(pieces[newScaf][:,1])
     for piece in pieces[newScaf]:
         pieceData = piece[2]
         pieceSeq = seqDict[pieceData["scaf"]][pieceData["start"]-1:pieceData["end"]]
-        if pieceData["strand"] == "-": pieceSeq = revTrans(pieceSeq)
+        if pieceData["strand"] == "-": pieceSeq = revComplement(pieceSeq)
         newSeq[pieceData["newStart"]-1:pieceData["newEnd"]] = pieceSeq
     newSeqs.append(newSeq)
 
