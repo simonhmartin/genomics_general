@@ -33,6 +33,7 @@ parser.add_argument("-r", "--ref", help="Genome .fa file. Must also have ", acti
 parser.add_argument("--ignoreConflicts", help="Don't fail if two annotations give conflicting information about the same site", action='store_true')
 parser.add_argument("--scaffoldLookup", help="Table of scaffold names (col1:reference and col2:annotation) if they differ", action = "store")
 parser.add_argument("--useAnnotationScaffoldNames", help="Use the scaffold names in the annotation rather than the reference", action = "store_true")
+parser.add_argument("--noheader", help="No header in output file", action = "store_true")
 
 args = parser.parse_args()
 
@@ -79,7 +80,8 @@ if args.scaffoldLookup and not args.useAnnotationScaffoldNames:
 if not args.outFile: outFile = sys.stdout
 else: outFile = gzip.open(args.outFile,"wt") if args.outFile.endswith(".gz") else open(args.outFile,"wt")
 
-outFile.write("\t".join(["scaffold","position","codon_position","substitution_type","degeneracy"]) + "\n")
+if not args.noheader:
+    outFile.write("\t".join(["scaffold","position","codon_position","substitution_type","degeneracy"]) + "\n")
 
 for scaffold in scaffolds:
     posData = {}
