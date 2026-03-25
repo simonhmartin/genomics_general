@@ -6,6 +6,7 @@ parser.add_argument("-g", "--genoFile", help="Input vcf file", action = "store")
 parser.add_argument("-f", "--genoFormat", help="Genotype format [otherwise will be inferred (slower)]", action = "store",choices = ["phased","diplo","paired"])
 parser.add_argument("--genoOutFile", help="Output Eigenstrat geno file", action = "store", required = True)
 parser.add_argument("--snpOutFile", help="Output Eigenstrat snp file", action = "store", required = True)
+parser.add_argument("--indOutFile", help="Output Eigenstrat ind file", action = "store", required = True)
 parser.add_argument("-s", "--samples", help="sample names (separated by commas)", action='store')
 parser.add_argument("--chromFile", help="Input chromosome number file", action = "store")
 parser.add_argument("--cumulativePos", help="For chroms with multiple scafs, add positions to previous scaf", action = "store_true")
@@ -15,21 +16,21 @@ parser.add_argument("--nullChrom", help="Chrom_for_unknown_scafs", action = "sto
 args = parser.parse_args()
 
 if args.genoFile:
-    genoFile = gzip.open(args.genoFile,"r") if args.genoFile.endswith(".gz") else open(args.genoFile, "r")
+    genoFile = gzip.open(args.genoFile,"rt") if args.genoFile.endswith(".gz") else open(args.genoFile, "rt")
 else: genoFile = sys.stdin
 
-genoOut = open(args.genoOutFile, "w")
-snpOut = open(args.snpOutFile, "w")
+genoOut = open(args.genoOutFile, "wt")
+snpOut = open(args.snpOutFile, "wt")
 
 reader=genomics.GenoFileReader(genoFile)
 
 if args.samples is None: samples = reader.names
-else: samples = args.samples.split(",")
+else: samples = [s for s in reader.names if s in args.samples.split(",")]
 
 
 if args.chromFile:
     chromsProvided = True
-    with open(args.chromFile, "r") as chromFile: chromDict = dict([line.split() for line in chromFile])
+    with open(args.chromFile, "rt") as chromFile: chromDict = dict([line.split() for line in chromFile])
 else: chromDict = {}
 
 
@@ -69,8 +70,11 @@ for siteData in reader.siteBySite():
         snpOut.write("\t".join([str(linesDone), chrom, "0.0", str(pos), alleles[0], alleles[1]]) + "\n")
     
     linesDone += 1
-    if linesDone % 100000 == 0: print linesDone, "lines done..."
-    
+    if linesDone % 100000 == 0: print(linesDone, "lines done...")
 
 genoOut.close
 snpOut.close()
+
+with open(args.indOutFile, "wt") as indFile:
+    for sample in samples:
+        indFile.write(sample + "  U  NA\n")
