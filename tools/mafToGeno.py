@@ -24,7 +24,7 @@ def parseMafBlock(mafBlock):
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("-m", "--mafFile", help="Input MAK file", action = "store", required = False)
+parser.add_argument("-m", "--mafFile", help="Input MAF file", action = "store", required = False)
 parser.add_argument("-g", "--genoFile", help="Output geno file", action = "store", required = False)
 parser.add_argument("--ref", help="Sequences to use as reference", action = "store", type=str, required=True)
 parser.add_argument("--renameChromAs", help="Value for CHROM column if not ref", action = "store", type=str, required=False)
